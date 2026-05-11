@@ -196,6 +196,8 @@ class ApiResponse(BaseModel, Generic[T]):
     data: Optional[T] = None
 ```
 
+**健康检查接口也必须使用 ApiResponse 统一响应格式，禁止返回裸 JSON。**
+
 ### 分页
 
 | 参数 | 说明 |
