@@ -1,0 +1,1 @@
+# Common module - shared utilities, config, exceptions
