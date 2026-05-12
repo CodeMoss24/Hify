@@ -1,6 +1,6 @@
 <template>
-  <div class="providers-view">
-    <h1>模型管理</h1>
+  <div class="agents-view">
+    <h1>Agent 管理</h1>
   </div>
 </template>
 

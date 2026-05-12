@@ -1,5 +1,5 @@
 <template>
-  <div class="provider-list">
+  <div class="provider-view">
     <el-alert v-if="status" :type="status === 'connected' ? 'success' : 'error'" :title="message" show-icon />
   </div>
 </template>
