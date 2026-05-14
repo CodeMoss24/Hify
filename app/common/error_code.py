@@ -1,42 +1,48 @@
-"""错误码定义"""
+"""Error code definitions"""
 from enum import Enum
 
 
 class ErrorCode(Enum):
-    """统一错误码枚举"""
+    """Standard error codes"""
 
-    # 通用错误（1000-1999）
-    PARAM_ERROR = (1001, "参数错误")
-    UNAUTHORIZED = (1002, "未授权")
-    FORBIDDEN = (1003, "无权限")
-    NOT_FOUND = (1004, "资源不存在")
-    INTERNAL_ERROR = (1005, "系统内部错误")
-    SERVICE_UNAVAILABLE = (1006, "服务不可用")
+    # Common (1000-1999)
+    PARAM_ERROR = (1001, "Parameter error")
+    UNAUTHORIZED = (1002, "Unauthorized")
+    FORBIDDEN = (1003, "Forbidden")
+    NOT_FOUND = (1004, "Resource not found")
+    INTERNAL_ERROR = (1005, "Internal server error")
+    SERVICE_UNAVAILABLE = (1006, "Service unavailable")
 
-    # Provider 错误（2000-2999）
-    PROVIDER_NOT_FOUND = (2001, " Provider 不存在")
-    PROVIDER_CONNECTION_FAILED = (2002, "Provider 连接失败")
+    # Provider (2000-2999)
+    PROVIDER_NOT_FOUND = (2001, "Provider not found")
+    PROVIDER_CONNECTION_FAILED = (2002, "Provider connection failed")
 
-    # Agent 错误（3000-3999）
-    AGENT_NOT_FOUND = (3001, "Agent 不存在")
+    # Agent (3000-3999)
+    AGENT_NOT_FOUND = (3001, "Agent not found")
 
-    # Chat 错误（4000-4999）
-    CONVERSATION_NOT_FOUND = (4001, "会话不存在")
-    MESSAGE_NOT_FOUND = (4002, "消息不存在")
+    # Chat (4000-4999)
+    CONVERSATION_NOT_FOUND = (4001, "Conversation not found")
+    MESSAGE_NOT_FOUND = (4002, "Message not found")
 
-    # MCP 错误（5000-5999）
-    MCP_SERVER_NOT_FOUND = (5001, "MCP Server 不存在")
-    MCP_TOOL_NOT_FOUND = (5002, "MCP Tool 不存在")
-    MCP_CALL_FAILED = (5003, "MCP Tool 调用失败")
+    # MCP (5000-5999)
+    MCP_SERVER_NOT_FOUND = (5001, "MCP server not found")
+    MCP_TOOL_NOT_FOUND = (5002, "MCP tool not found")
+    MCP_CALL_FAILED = (5003, "MCP tool call failed")
 
-    # Workflow 错误（6000-6999）
-    WORKFLOW_NOT_FOUND = (6001, "Workflow 不存在")
-    WORKFLOW_EXECUTE_FAILED = (6002, "Workflow 执行失败")
+    # Workflow (6000-6999)
+    WORKFLOW_NOT_FOUND = (6001, "Workflow not found")
+    WORKFLOW_EXECUTE_FAILED = (6002, "Workflow execution failed")
 
-    # Knowledge 错误（7000-7999）
-    KNOWLEDGE_BASE_NOT_FOUND = (7001, "知识库不存在")
-    DOCUMENT_NOT_FOUND = (7002, "文档不存在")
-    CHUNK_NOT_FOUND = (7003, "分块不存在")
+    # Knowledge (7000-7999)
+    KNOWLEDGE_BASE_NOT_FOUND = (7001, "Knowledge base not found")
+    DOCUMENT_NOT_FOUND = (7002, "Document not found")
+    CHUNK_NOT_FOUND = (7003, "Chunk not found")
+
+    # LLM (8000-8999)
+    LLM_TIMEOUT = (8001, "LLM API timeout")
+    LLM_AUTH_FAILED = (8002, "LLM API auth failed")
+    LLM_RATE_LIMITED = (8003, "LLM API rate limited")
+    LLM_SERVER_ERROR = (8004, "LLM API server error")
 
     def __init__(self, code: int, message: str):
         self._code = code

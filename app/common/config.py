@@ -1,5 +1,10 @@
 """统一配置模块，所有配置项从 .env 读取"""
+from datetime import datetime, date
+from typing import Any
+
 from dotenv import load_dotenv
+from fastapi import FastAPI
+import json
 
 load_dotenv()
 
@@ -28,3 +33,21 @@ APP_PORT = int(os.getenv("APP_PORT", "8000"))
 # LLM 超时
 LLM_TIMEOUT = int(os.getenv("LLM_TIMEOUT", "120"))
 LLM_CONNECT_TIMEOUT = int(os.getenv("LLM_CONNECT_TIMEOUT", "10"))
+
+# LLM 并发控制
+LLM_CHAT_CONCURRENCY = int(os.getenv("LLM_CHAT_CONCURRENCY", "10"))
+BACKGROUND_CONCURRENCY = int(os.getenv("BACKGROUND_CONCURRENCY", "5"))
+
+
+def setup_json_encoders(app: FastAPI) -> None:
+    """注册时间类型序列化：所有 datetime/date 序列化为 ISO 8601 字符串"""
+
+    def json_encoder_default(val: Any) -> Any:
+        if isinstance(val, datetime):
+            return val.isoformat()
+        if isinstance(val, date):
+            return val.isoformat()
+        raise TypeError(f"Object of type {type(val)} is not JSON serializable")
+
+    # 替换 FastAPI 的默认 JSON 编码器
+    app.json_encoder = json_encoder_default

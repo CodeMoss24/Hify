@@ -1,5 +1,5 @@
-import api from '@/api'
+import { get } from '@/api'
 
 export const getHealth = () => {
-  return api.get('/v1/health')
+  return get('/v1/health')
 }

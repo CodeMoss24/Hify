@@ -2,7 +2,12 @@
   "permissions": {
     "allow": [
       "WebSearch",
-      "Bash(gh search:*)"
+      "Bash(gh search: *)"
     ]
+  },
+  "env": {
+    "ANTHROPIC_AUTH_TOKEN": "sk-cp--BVpLKrUudma4Z5pwkjcqz0bQozUTwUCArte_w-AWi3ndzexKQdkUEjIitO0ID4MvySuYeLfkblxeYLGAjWywzGNMz1IoHs_tJZJKORSVBonI_AH-3aUqfY",
+    "ANTHROPIC_BASE_URL": "https://api.minimaxi.com/anthropic",
+    "ANTHROPIC_MODEL": "MiniMax-M2.7"
   }
 }

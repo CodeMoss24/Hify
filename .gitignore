@@ -1,3 +1,20 @@
+# 环境变量文件
+.env
+.env.*
+
+# 数据库运行数据
+data/
+
+# 前端依赖
+hify-web/node_modules/
+hify-web/dist/
+
+# Python 虚拟环境
 venv/
-__pycache__/
-.env 
+
+# IDE 配置
+.idea/
+.vscode/
+
+# 文档数据
+.docs-data/

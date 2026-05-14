@@ -24,8 +24,8 @@ class ApiResponse(BaseModel, Generic[T]):
         return cls(code=code, message=message, data=None)
 
 
-class PageResult(ApiResponse, Generic[T]):
-    """统一分页响应，继承 ApiResponse，顶层结构为 {code, message, data}"""
+class PageResult(BaseModel, Generic[T]):
+    """统一分页响应，继承 BaseModel，顶层结构为 {code, message, data}"""
 
     list: list[T]
     total: int

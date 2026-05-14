@@ -5,6 +5,7 @@ from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
+from starlette.responses import JSONResponse
 
 from app.common.error_code import ErrorCode
 from app.common.exceptions import BizException
@@ -23,7 +24,7 @@ def register_exception_handlers(app: FastAPI) -> None:
             f"[BizException] path={request.url.path} code={exc.code} message={exc.message}",
             extra={"cause": str(exc.cause)} if exc.cause else None,
         )
-        return ApiResponse.fail(code=exc.code, message=exc.message)
+        return JSONResponse(ApiResponse.fail(code=exc.code, message=exc.message).model_dump())
 
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(
@@ -32,10 +33,10 @@ def register_exception_handlers(app: FastAPI) -> None:
         """捕获 FastAPI 参数校验异常，返回规范化的 ApiResponse.fail()"""
         errors = exc.errors()
         logger.warning(f"[ValidationError] path={request.url.path} errors={errors}")
-        return ApiResponse.fail(
+        return JSONResponse(ApiResponse.fail(
             code=ErrorCode.PARAM_ERROR.code,
             message=ErrorCode.PARAM_ERROR.message,
-        )
+        ).model_dump())
 
     @app.exception_handler(Exception)
     async def general_exception_handler(request: Request, exc: Exception) -> Any:
@@ -44,7 +45,7 @@ def register_exception_handlers(app: FastAPI) -> None:
             f"[InternalError] path={request.url.path} exception={type(exc).__name__}: {exc}\n"
             + traceback.format_exc(),
         )
-        return ApiResponse.fail(
+        return JSONResponse(ApiResponse.fail(
             code=ErrorCode.INTERNAL_ERROR.code,
             message=ErrorCode.INTERNAL_ERROR.message,
-        )
+        ).model_dump())

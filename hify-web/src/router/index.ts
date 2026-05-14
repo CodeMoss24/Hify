@@ -10,32 +10,32 @@ const router = createRouter({
     {
       path: '/chat',
       name: 'Chat',
-      component: () => import('@/views/ChatView.vue'),
+      component: () => import('@/views/chat/ChatView.vue'),
     },
     {
       path: '/providers',
       name: 'Providers',
-      component: () => import('@/views/ProvidersView.vue'),
+      component: () => import('@/views/provider/ProviderView.vue'),
     },
     {
       path: '/agents',
       name: 'Agents',
-      component: () => import('@/views/AgentsView.vue'),
+      component: () => import('@/views/agent/AgentView.vue'),
     },
     {
       path: '/knowledge',
       name: 'Knowledge',
-      component: () => import('@/views/KnowledgeView.vue'),
+      component: () => import('@/views/knowledge/KnowledgeView.vue'),
     },
     {
       path: '/workflows',
       name: 'Workflows',
-      component: () => import('@/views/WorkflowsView.vue'),
+      component: () => import('@/views/workflow/WorkflowView.vue'),
     },
     {
       path: '/mcp',
       name: 'Mcp',
-      component: () => import('@/views/McpView.vue'),
+      component: () => import('@/views/mcp/McpView.vue'),
     },
   ],
 })
