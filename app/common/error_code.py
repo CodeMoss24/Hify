@@ -16,6 +16,7 @@ class ErrorCode(Enum):
     # Provider (2000-2999)
     PROVIDER_NOT_FOUND = (2001, "Provider not found")
     PROVIDER_CONNECTION_FAILED = (2002, "Provider connection failed")
+    MODEL_NOT_FOUND = (2003, "Model not found")
 
     # Agent (3000-3999)
     AGENT_NOT_FOUND = (3001, "Agent not found")

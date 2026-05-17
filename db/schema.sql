@@ -12,10 +12,12 @@ SET FOREIGN_KEY_CHECKS = 0;
 DROP TABLE IF EXISTS `tb_model_provider`;
 CREATE TABLE `tb_model_provider` (
   `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-  `name` VARCHAR(64) NOT NULL COMMENT '提供商名称',
-  `provider_type` VARCHAR(32) NOT NULL COMMENT 'openai/anthropic/gemini/ollama',
+  `name` VARCHAR(64) NOT NULL COMMENT 'Provider 展示名称',
+  `provider_type` VARCHAR(32) NOT NULL COMMENT 'openai/anthropic/openai_compatible/ollama',
   `base_url` VARCHAR(256) NOT NULL COMMENT 'API Base URL',
-  `api_key` VARCHAR(256) NOT NULL DEFAULT '' COMMENT 'API Key',
+  `api_key` VARCHAR(512) NOT NULL DEFAULT '' COMMENT 'API Key',
+  `extra_config` JSON DEFAULT NULL COMMENT '差异配置(anthropic_version, custom_headers等)',
+  `status` VARCHAR(16) NOT NULL DEFAULT 'enabled' COMMENT 'enabled/disabled 用户控制',
   `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   `updated_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
   `deleted` TINYINT(1) NOT NULL DEFAULT 0,
@@ -30,8 +32,10 @@ DROP TABLE IF EXISTS `tb_model`;
 CREATE TABLE `tb_model` (
   `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   `provider_id` BIGINT NOT NULL COMMENT '关联 provider id',
-  `name` VARCHAR(64) NOT NULL COMMENT '模型名称',
-  `model_id` VARCHAR(64) NOT NULL COMMENT '模型标识',
+  `name` VARCHAR(64) NOT NULL COMMENT '展示名称',
+  `model_id` VARCHAR(128) NOT NULL COMMENT 'API 调用标识(如 gpt-4o)',
+  `status` VARCHAR(16) NOT NULL DEFAULT 'enabled' COMMENT 'enabled/disabled',
+  `capabilities` VARCHAR(256) NOT NULL DEFAULT '' COMMENT '能力标签(逗号分隔: streaming,tool_use,thinking)',
   `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   `updated_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
   `deleted` TINYINT(1) NOT NULL DEFAULT 0,
@@ -41,7 +45,22 @@ CREATE TABLE `tb_model` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='模型表';
 
 -- =============================================
--- 3. tb_agent - Agent 表
+-- 3. tb_provider_health_log - Provider 健康状态变更日志
+-- =============================================
+DROP TABLE IF EXISTS `tb_provider_health_log`;
+CREATE TABLE `tb_provider_health_log` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `provider_id` BIGINT NOT NULL COMMENT 'Provider id',
+  `prev_status` VARCHAR(16) NOT NULL COMMENT '变更前状态',
+  `curr_status` VARCHAR(16) NOT NULL COMMENT '变更后状态',
+  `error_message` VARCHAR(512) NOT NULL DEFAULT '' COMMENT '错误信息',
+  `response_time_ms` INT NOT NULL DEFAULT 0 COMMENT '响应时间(ms)',
+  `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  INDEX `idx_tb_provider_health_log_provider` (`provider_id`, `created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Provider 健康状态变更日志';
+
+-- =============================================
+-- 4. tb_agent - Agent 表
 -- =============================================
 DROP TABLE IF EXISTS `tb_agent`;
 CREATE TABLE `tb_agent` (
@@ -57,7 +76,7 @@ CREATE TABLE `tb_agent` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Agent 表';
 
 -- =============================================
--- 4. tb_agent_knowledge_base - Agent 与知识库关联表
+-- 5. tb_agent_knowledge_base - Agent 与知识库关联表
 -- =============================================
 DROP TABLE IF EXISTS `tb_agent_knowledge_base`;
 CREATE TABLE `tb_agent_knowledge_base` (
@@ -74,7 +93,7 @@ CREATE TABLE `tb_agent_knowledge_base` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Agent 与知识库关联表';
 
 -- =============================================
--- 5. tb_agent_tool - Agent 与 MCP 工具关联表
+-- 6. tb_agent_tool - Agent 与 MCP 工具关联表
 -- =============================================
 DROP TABLE IF EXISTS `tb_agent_tool`;
 CREATE TABLE `tb_agent_tool` (
@@ -91,7 +110,7 @@ CREATE TABLE `tb_agent_tool` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Agent 与 MCP 工具关联表';
 
 -- =============================================
--- 6. tb_mcp_server - MCP 服务器表
+-- 7. tb_mcp_server - MCP 服务器表
 -- =============================================
 DROP TABLE IF EXISTS `tb_mcp_server`;
 CREATE TABLE `tb_mcp_server` (
@@ -106,7 +125,7 @@ CREATE TABLE `tb_mcp_server` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='MCP 服务器表';
 
 -- =============================================
--- 7. tb_mcp_tool - MCP 工具表
+-- 8. tb_mcp_tool - MCP 工具表
 -- =============================================
 DROP TABLE IF EXISTS `tb_mcp_tool`;
 CREATE TABLE `tb_mcp_tool` (
@@ -123,7 +142,7 @@ CREATE TABLE `tb_mcp_tool` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='MCP 工具表';
 
 -- =============================================
--- 8. tb_knowledge_base - 知识库表
+-- 9. tb_knowledge_base - 知识库表
 -- =============================================
 DROP TABLE IF EXISTS `tb_knowledge_base`;
 CREATE TABLE `tb_knowledge_base` (
@@ -138,7 +157,7 @@ CREATE TABLE `tb_knowledge_base` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='知识库表';
 
 -- =============================================
--- 9. tb_document - 文档表
+-- 10. tb_document - 文档表
 -- =============================================
 DROP TABLE IF EXISTS `tb_document`;
 CREATE TABLE `tb_document` (
@@ -156,7 +175,7 @@ CREATE TABLE `tb_document` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='文档表';
 
 -- =============================================
--- 10. tb_document_chunk - 文档分块表
+-- 11. tb_document_chunk - 文档分块表
 -- =============================================
 DROP TABLE IF EXISTS `tb_document_chunk`;
 CREATE TABLE `tb_document_chunk` (
@@ -173,7 +192,7 @@ CREATE TABLE `tb_document_chunk` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='文档分块表';
 
 -- =============================================
--- 11. tb_conversation - 会话表
+-- 12. tb_conversation - 会话表
 -- =============================================
 DROP TABLE IF EXISTS `tb_conversation`;
 CREATE TABLE `tb_conversation` (
@@ -189,7 +208,7 @@ CREATE TABLE `tb_conversation` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='会话表';
 
 -- =============================================
--- 12. tb_message - 消息表
+-- 13. tb_message - 消息表
 -- =============================================
 DROP TABLE IF EXISTS `tb_message`;
 CREATE TABLE `tb_message` (
@@ -205,7 +224,7 @@ CREATE TABLE `tb_message` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='消息表';
 
 -- =============================================
--- 13. tb_message_reference - 消息引用表（RAG 引用）
+-- 14. tb_message_reference - 消息引用表（RAG 引用）
 -- =============================================
 DROP TABLE IF EXISTS `tb_message_reference`;
 CREATE TABLE `tb_message_reference` (
@@ -222,7 +241,7 @@ CREATE TABLE `tb_message_reference` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='消息引用表';
 
 -- =============================================
--- 14. tb_workflow - 工作流表
+-- 15. tb_workflow - 工作流表
 -- =============================================
 DROP TABLE IF EXISTS `tb_workflow`;
 CREATE TABLE `tb_workflow` (
@@ -237,7 +256,7 @@ CREATE TABLE `tb_workflow` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='工作流表';
 
 -- =============================================
--- 15. tb_workflow_node - 工作流节点表
+-- 16. tb_workflow_node - 工作流节点表
 -- =============================================
 DROP TABLE IF EXISTS `tb_workflow_node`;
 CREATE TABLE `tb_workflow_node` (
@@ -256,7 +275,7 @@ CREATE TABLE `tb_workflow_node` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='工作流节点表';
 
 -- =============================================
--- 16. tb_workflow_edge - 工作流连线表
+-- 17. tb_workflow_edge - 工作流连线表
 -- =============================================
 DROP TABLE IF EXISTS `tb_workflow_edge`;
 CREATE TABLE `tb_workflow_edge` (
@@ -273,7 +292,7 @@ CREATE TABLE `tb_workflow_edge` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='工作流连线表';
 
 -- =============================================
--- 17. tb_user - 用户表
+-- 18. tb_user - 用户表
 -- =============================================
 DROP TABLE IF EXISTS `tb_user`;
 CREATE TABLE `tb_user` (
@@ -289,7 +308,7 @@ CREATE TABLE `tb_user` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户表';
 
 -- =============================================
--- 18. tb_api_key - API Key 表
+-- 19. tb_api_key - API Key 表
 -- =============================================
 DROP TABLE IF EXISTS `tb_api_key`;
 CREATE TABLE `tb_api_key` (

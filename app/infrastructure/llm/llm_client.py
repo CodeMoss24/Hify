@@ -195,6 +195,74 @@ class LlmClient:
                 await breaker.record_failure()
             raise
 
+    async def _do_get(self, url: str, headers: dict, timeout: float = 10.0) -> dict:
+        """实际执行 GET 请求（管理/连通性测试，不走熔断和重试）"""
+        start = time.monotonic()
+        try:
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(connect=5.0, read=timeout, write=5.0, pool=5.0)
+            ) as client:
+                response = await client.get(url, headers=headers)
+            elapsed = time.monotonic() - start
+            logger.info(
+                f"LLM GET {url} -> {response.status_code} ({elapsed:.2f}s)"
+            )
+            return {"status_code": response.status_code, "body": response.json()}
+        except httpx.TimeoutException as e:
+            elapsed = time.monotonic() - start
+            logger.warning(f"LLM GET {url} TIMEOUT after {elapsed:.2f}s")
+            raise LlmApiException(
+                ErrorCode.LLM_TIMEOUT,
+                message=f"LLM API timeout after {elapsed:.2f}s",
+                cause=e,
+            )
+        except Exception as e:
+            elapsed = time.monotonic() - start
+            logger.error(f"LLM GET {url} ERROR after {elapsed:.2f}s: {e}")
+            raise LlmApiException(
+                ErrorCode.LLM_SERVER_ERROR,
+                message=f"LLM API request failed: {e}",
+                cause=e,
+            )
+
+    async def admin_get(self, url: str, headers: dict, timeout: float = 10.0) -> dict:
+        """管理/连通性测试 GET 请求，不走熔断和重试，超时默认 10s"""
+        return await self._do_get(url, headers, timeout)
+
+    async def _do_admin_post(self, url: str, headers: dict, body: dict, timeout: float = 10.0) -> dict:
+        """实际执行 POST 请求（管理/连通性测试，不走熔断和重试）"""
+        start = time.monotonic()
+        try:
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(connect=5.0, read=timeout, write=5.0, pool=5.0)
+            ) as client:
+                response = await client.post(url, headers=headers, json=body)
+            elapsed = time.monotonic() - start
+            logger.info(
+                f"LLM POST {url} -> {response.status_code} ({elapsed:.2f}s)"
+            )
+            return {"status_code": response.status_code, "body": response.json()}
+        except httpx.TimeoutException as e:
+            elapsed = time.monotonic() - start
+            logger.warning(f"LLM POST {url} TIMEOUT after {elapsed:.2f}s")
+            raise LlmApiException(
+                ErrorCode.LLM_TIMEOUT,
+                message=f"LLM API timeout after {elapsed:.2f}s",
+                cause=e,
+            )
+        except Exception as e:
+            elapsed = time.monotonic() - start
+            logger.error(f"LLM POST {url} ERROR after {elapsed:.2f}s: {e}")
+            raise LlmApiException(
+                ErrorCode.LLM_SERVER_ERROR,
+                message=f"LLM API request failed: {e}",
+                cause=e,
+            )
+
+    async def admin_post(self, url: str, headers: dict, body: dict, timeout: float = 10.0) -> dict:
+        """管理/连通性测试 POST 请求，不走熔断和重试，超时默认 10s"""
+        return await self._do_admin_post(url, headers, body, timeout)
+
     def _raise_on_status(self, status_code: int, response_text: str) -> None:
         """根据 HTTP 状态码抛对应异常"""
         if status_code == 200:
@@ -236,3 +304,7 @@ class LlmClient:
                 message=f"LLM API unexpected status {status_code}",
                 cause=cause,
             )
+
+
+# 模块级单例
+llm_client = LlmClient()

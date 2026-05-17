@@ -3,6 +3,7 @@ import asyncio
 import logging
 import time
 from enum import Enum
+from typing import Any, Callable
 
 from app.infrastructure.llm.llm_api_exception import LlmApiException
 from app.common.error_code import ErrorCode

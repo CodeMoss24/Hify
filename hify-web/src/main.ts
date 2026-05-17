@@ -4,6 +4,7 @@ import ElementPlus from 'element-plus'
 import 'element-plus/dist/index.css'
 import router from './router'
 import App from './App.vue'
+import '@/styles/design-tokens.css'
 import '@/styles/main.css'
 
 const app = createApp(App)

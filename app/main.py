@@ -1,4 +1,5 @@
 """FastAPI 入口"""
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -8,10 +9,12 @@ from app.common.database import Base, _engine
 from app.common.handlers import register_exception_handlers
 from app.common.logging_config import setup_logging
 from app.common.redis_client import redis_client
+from app.infrastructure.llm.llm_client import llm_client
+from app.provider.health_checker import health_checker
 from app.common.response import ApiResponse
 
 # 导入所有业务模块的 models，确保 SQLAlchemy 能发现全部表
-from app.provider import models as provider_models
+from app.provider.models import ProviderModel, ModelModel, ProviderHealthLogModel
 from app.agent import models as agent_models
 from app.chat import models as chat_models
 from app.mcp import models as mcp_models
@@ -25,7 +28,17 @@ async def lifespan(app: FastAPI):
     await redis_client.connect()
     # 自动创建所有表（仅当表不存在时）
     Base.metadata.create_all(bind=_engine)
+    # 启动 Provider 健康检查后台协程
+    health_task = asyncio.create_task(health_checker.run_loop())
     yield
+    # 停止健康检查
+    health_checker.stop()
+    health_task.cancel()
+    try:
+        await health_task
+    except asyncio.CancelledError:
+        pass
+    await llm_client.close()
     await redis_client.close()
 
 
