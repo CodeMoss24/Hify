@@ -55,9 +55,15 @@ register_exception_handlers(app)
 
 # 注册路由
 from app.provider.router import router as provider_router
+from app.agent.router import router as agent_router
+from app.chat.router import router as chat_router
 
 # 注册 provider 路由
 app.include_router(provider_router, prefix="/api/v1", tags=["provider"])
+# 注册 agent 路由
+app.include_router(agent_router, prefix="/api/v1", tags=["agent"])
+# 注册 chat 路由
+app.include_router(chat_router, prefix="/api/v1", tags=["chat"])
 
 
 @app.get("/v1/health")

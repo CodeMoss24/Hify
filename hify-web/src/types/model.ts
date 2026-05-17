@@ -37,11 +37,28 @@ export interface Model {
   updated_at: string
 }
 
+export interface KnowledgeBaseItem {
+  id: number
+  name: string
+}
+
+export interface ToolItem {
+  id: number
+  name: string
+}
+
 export interface Agent {
   id: number
   name: string
+  description: string
   model_id: number
-  system_prompt?: string
+  system_prompt: string
+  temperature: number
+  max_tokens: number
+  max_context_turns: number
+  enabled: number
+  knowledge_bases: KnowledgeBaseItem[]
+  tools: ToolItem[]
   created_at: string
   updated_at: string
 }

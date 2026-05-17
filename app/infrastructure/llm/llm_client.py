@@ -172,7 +172,7 @@ class LlmClient:
         callback: Callable[[str], Awaitable[None]],
         timeout: float = 120.0,
     ) -> None:
-        """SSE 流式请求，逐行读取 data: 开头的 SSE 事件，触发 callback（带熔断和重试）"""
+        """SSE 流式请求，逐行读取 data: 开头的 SSE 事件，触发 callback（带熔断，不重试）"""
         base_url = self._extract_base_url(url)
         breaker = self._get_breaker(base_url)
 
@@ -184,10 +184,8 @@ class LlmClient:
             )
 
         try:
-            await self._retry_handler.execute_with_retry(
-                self._do_stream(url, headers, body, callback, timeout),
-                is_retryable=self._retry_handler.should_retry,
-            )
+            # 流式请求不重试，因为已经开始向客户端返回数据了
+            await self._do_stream(url, headers, body, callback, timeout)
             await breaker.record_success()
         except LlmApiException as e:
             # 401/403 不触发熔断

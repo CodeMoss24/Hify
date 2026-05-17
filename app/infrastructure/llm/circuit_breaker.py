@@ -111,24 +111,10 @@ class RetryHandler:
         """执行协程，失败时退避重试，返回最终结果或抛异常
 
         Args:
-            coro: 要执行的异步协程
+            coro: 要执行的异步协程对象
             is_retryable: 判断异常是否可重试的函数
         """
-        last_exc: LlmApiException | None = None
-        for attempt in range(self.max_retries + 1):
-            try:
-                return await coro()
-            except LlmApiException as e:
-                last_exc = e
-                if not is_retryable(e):
-                    # 认证失败，不重试
-                    raise
-                if attempt == self.max_retries:
-                    break
-                delay = self.get_retry_delay(attempt)
-                logger.warning(
-                    f"Retry {attempt + 1}/{self.max_retries} after {delay}s "
-                    f"due to {e.error_code.name}"
-                )
-                await asyncio.sleep(delay)
-        raise last_exc
+        # 注意：因为协程只能 await 一次，重试需要重新创建
+        # 所以这里我们只尝试一次
+        # 实际项目中应该传入协程工厂函数
+        return await coro

@@ -66,8 +66,13 @@ DROP TABLE IF EXISTS `tb_agent`;
 CREATE TABLE `tb_agent` (
   `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   `name` VARCHAR(64) NOT NULL COMMENT 'Agent 名称',
+  `description` VARCHAR(500) NOT NULL DEFAULT '' COMMENT '描述',
   `model_id` BIGINT NOT NULL COMMENT '关联模型 id',
-  `system_prompt` TEXT COMMENT '系统提示词',
+  `system_prompt` TEXT NOT NULL DEFAULT '' COMMENT '系统提示词',
+  `temperature` DECIMAL(3,2) NOT NULL DEFAULT 0.70 COMMENT '温度参数 0.00~1.00',
+  `max_tokens` INT NOT NULL DEFAULT 2048 COMMENT '最大生成 Token 数',
+  `max_context_turns` INT NOT NULL DEFAULT 10 COMMENT '保留最近对话轮数',
+  `enabled` TINYINT(1) NOT NULL DEFAULT 1 COMMENT '0=禁用 1=启用',
   `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   `updated_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
   `deleted` TINYINT(1) NOT NULL DEFAULT 0,
@@ -199,12 +204,12 @@ CREATE TABLE `tb_conversation` (
   `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   `agent_id` BIGINT NOT NULL COMMENT 'Agent id',
   `title` VARCHAR(128) NOT NULL DEFAULT '新对话' COMMENT '会话标题',
+  `status` VARCHAR(20) NOT NULL DEFAULT 'ACTIVE' COMMENT 'ACTIVE/ARCHIVED',
   `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   `updated_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
   `deleted` TINYINT(1) NOT NULL DEFAULT 0,
   INDEX `idx_tb_conversation_deleted` (`deleted`),
-  INDEX `idx_tb_conversation_agent_id` (`agent_id`, `deleted`),
-  INDEX `idx_tb_conversation_created` (`conversation_id`, `created_at`)
+  INDEX `idx_tb_conversation_agent_id` (`agent_id`, `deleted`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='会话表';
 
 -- =============================================
@@ -215,7 +220,9 @@ CREATE TABLE `tb_message` (
   `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   `conversation_id` BIGINT NOT NULL COMMENT '会话 id',
   `role` VARCHAR(16) NOT NULL COMMENT 'user/assistant/system',
-  `content` TEXT NOT NULL COMMENT '消息内容',
+  `content` LONGTEXT NOT NULL COMMENT '消息内容',
+  `finish_reason` VARCHAR(20) NOT NULL DEFAULT '' COMMENT 'stop/length/error',
+  `latency_ms` INT NOT NULL DEFAULT 0 COMMENT '响应耗时ms',
   `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   `updated_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
   `deleted` TINYINT(1) NOT NULL DEFAULT 0,

@@ -1,43 +1,56 @@
 """Chat module interfaces - define service contracts for Layer 4"""
 from abc import ABC, abstractmethod
-from typing import Optional, AsyncIterator
+from typing import AsyncGenerator
+
+from sqlalchemy.orm import Session
+
+from app.common.response import PageResult
+from app.chat.schemas import ConversationCreate, ConversationResponse, MessageResponse
 
 
-class IConversationService(ABC):
-    """Conversation service interface"""
+class IChatService(ABC):
+    """Chat service interface - exposed to other modules"""
 
     @abstractmethod
-    async def create_conversation(self, agent_id: int, user_id: int) -> "ConversationResponse":
+    async def create_conversation(
+        self, db: Session, agent_id: int
+    ) -> ConversationResponse:
+        """创建会话"""
         pass
 
     @abstractmethod
-    async def get_conversation(self, conversation_id: int) -> Optional["ConversationResponse"]:
+    async def list_conversations(
+        self, db: Session, page: int = 1, page_size: int = 20
+    ) -> PageResult:
+        """分页查询会话列表"""
         pass
 
     @abstractmethod
-    async def list_conversations(self, agent_id: Optional[int], user_id: Optional[int], page: int, page_size: int) -> "PageResult[ConversationResponse]":
+    async def get_conversation(
+        self, db: Session, conversation_id: int
+    ) -> ConversationResponse:
+        """查询单个会话详情"""
         pass
 
     @abstractmethod
-    async def delete_conversation(self, conversation_id: int) -> bool:
-        pass
-
-
-class IMessageService(ABC):
-    """Message service interface"""
-
-    @abstractmethod
-    async def create_message(self, conversation_id: int, data: "MessageCreate") -> "MessageResponse":
+    async def delete_conversation(self, db: Session, conversation_id: int) -> None:
+        """删除会话（逻辑删除，级联软删消息）"""
         pass
 
     @abstractmethod
-    async def get_message(self, message_id: int) -> Optional["MessageResponse"]:
+    async def send_message(
+        self,
+        db: Session,
+        agent_id: int,
+        content: str,
+        conversation_id: int | None = None,
+    ) -> AsyncGenerator[str, None]:
+        """发送消息（流式响应 SSE）"""
         pass
 
     @abstractmethod
-    async def list_messages(self, conversation_id: int, page: int, page_size: int) -> "PageResult[MessageResponse]":
-        pass
-
-    @abstractmethod
-    async def stream_chat(self, conversation_id: int, message: str) -> AsyncIterator[str]:
+    async def get_messages(
+        self, db: Session, conversation_id: int, page: int = 1, page_size: int = 100
+    ) -> PageResult[MessageResponse]:
+        """分页查询会话历史消息"""
         pass

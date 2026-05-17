@@ -473,6 +473,8 @@ ORDER BY sum_no_index_used DESC LIMIT 20;
 - 配置项外化到 `.env` 文件，通过 `app/common/config.py` 读取，不硬编码
 - Redis 客户端统一用 `redis.asyncio`，不单独使用 `aioredis`
 - **所有接口返回的数据，在进入响应封装前，必须全部转为 Pydantic DTO，禁止将 ORM 对象直接暴露给序列化层**（例如 `list_providers` 中 ORM 模型必须先通过 `ProviderResponse.from_orm()` 转 DTO 再传 `to_page_result`）
+- **关联表更新优先全量替换**：数据量小时（如 Agent 绑定的工具列表），优先用 DELETE + INSERT 全量替换，逻辑比增量 diff 简单得多，不易出错
+- **语义有歧义的接口要拆开**：如果同一个接口的某个参数有两种不同语义（如 toolIds 不传时是“清空工具”还是“不修改工具”），拆成两个独立接口，让每个接口的语义唯一、无歧义
 
 ### 改代码时
 - 先理解相关模块的设计意图

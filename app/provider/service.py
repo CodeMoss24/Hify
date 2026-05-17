@@ -1,5 +1,4 @@
 """Provider & Model service implementation"""
-import time
 import logging
 
 from sqlalchemy.orm import Session
@@ -9,8 +8,6 @@ from app.common.database import paginate, to_page_result
 from app.common.exceptions import BizException
 from app.common.error_code import ErrorCode
 from app.common.redis_client import redis_client
-from app.infrastructure.llm.llm_client import llm_client
-from app.infrastructure.llm.llm_api_exception import LlmApiException
 from app.provider.interfaces import IProviderService, IModelService
 from app.provider.models import ProviderModel, ModelModel
 from app.provider.schemas import (
@@ -18,6 +15,7 @@ from app.provider.schemas import (
     ModelCreate, ModelUpdate, ModelResponse,
     ConnectionTestResult,
 )
+from app.provider.adapter_factory import provider_adapter_factory
 
 logger = logging.getLogger(__name__)
 
@@ -91,157 +89,14 @@ class ProviderService(IProviderService):
         db.commit()
         await self._cache.evict_pattern("provider:*")
 
-    # 默认测试模型：连通性测试用最小 chat 请求代替 GET /models
-    _TEST_MODELS = {
-        "openai": "gpt-4o-mini",
-        "anthropic": "claude-3-5-haiku-20241022",
-        "ollama": "llama3",
-    }
-
     async def test_connection(self, db: Session, provider_id: int) -> ConnectionTestResult:
-        """测试 Provider 连通性
-
-        openai/anthropic/openai_compatible: 发 POST /chat/completions 最小请求
-        ollama: 发 GET /api/tags（Ollama 原生接口，支持列表）
-        """
+        """测试 Provider 连通性，通过 Adapter 策略分发"""
         model = ProviderModel.find_all(db).filter_by(id=provider_id).first()
         if not model:
             raise BizException(ErrorCode.PROVIDER_NOT_FOUND)
 
-        provider_type = model.provider_type
-        base_url = model.base_url.rstrip("/")
-        extra_config = model.extra_config or {}
-        timeout = 10.0
-
-        if provider_type == "ollama":
-            url = f"{base_url}/api/tags"
-            headers = {}
-            return await self._do_test_get(url, headers, timeout, "ollama")
-
-        # OpenAI / Anthropic / OpenAI 兼容：走 chat completions
-        if provider_type == "anthropic":
-            url = f"{base_url}/messages"
-            headers = {
-                "x-api-key": model.api_key,
-                "anthropic-version": extra_config.get("anthropic_version", "2023-06-01"),
-                "content-type": "application/json",
-            }
-            test_model = extra_config.get("test_model", self._TEST_MODELS["anthropic"])
-            body = {
-                "model": test_model,
-                "max_tokens": 1,
-                "messages": [{"role": "user", "content": "hi"}],
-            }
-            return await self._do_test_post(url, headers, body, timeout)
-
-        # openai / openai_compatible
-        url = f"{base_url}/chat/completions"
-        headers = {
-            "Authorization": f"Bearer {model.api_key}",
-            "content-type": "application/json",
-        }
-        test_model = extra_config.get("test_model", self._TEST_MODELS.get(provider_type, "gpt-4o-mini"))
-        body = {
-            "model": test_model,
-            "max_tokens": 1,
-            "messages": [{"role": "user", "content": "hi"}],
-        }
-        return await self._do_test_post(url, headers, body, timeout)
-
-    async def _do_test_get(
-        self, url: str, headers: dict, timeout: float, provider_type: str
-    ) -> ConnectionTestResult:
-        """通过 LlmClient GET 请求测试连通性（仅 Ollama）"""
-        start = time.monotonic()
-        try:
-            result = await llm_client.admin_get(url, headers, timeout)
-            latency_ms = int((time.monotonic() - start) * 1000)
-
-            status_code = result["status_code"]
-            if status_code != 200:
-                return ConnectionTestResult(
-                    success=False,
-                    latency_ms=latency_ms,
-                    error_message=f"HTTP {status_code}",
-                )
-
-            model_count = len(result["body"].get("models", []))
-            return ConnectionTestResult(
-                success=True,
-                latency_ms=latency_ms,
-                model_count=model_count,
-            )
-
-        except LlmApiException as e:
-            latency_ms = int((time.monotonic() - start) * 1000)
-            logger.warning(f"Provider connection test failed: {url} -> {e.message}")
-            return ConnectionTestResult(
-                success=False,
-                latency_ms=latency_ms,
-                error_message=e.message,
-            )
-        except Exception as e:
-            latency_ms = int((time.monotonic() - start) * 1000)
-            logger.warning(f"Provider connection test failed: {url} -> {e}")
-            return ConnectionTestResult(
-                success=False,
-                latency_ms=latency_ms,
-                error_message=str(e),
-            )
-
-    async def _do_test_post(
-        self, url: str, headers: dict, body: dict, timeout: float
-    ) -> ConnectionTestResult:
-        """通过 LlmClient POST chat/completions 测试连通性"""
-        start = time.monotonic()
-        try:
-            result = await llm_client.admin_post(url, headers, body, timeout)
-            latency_ms = int((time.monotonic() - start) * 1000)
-
-            status_code = result["status_code"]
-            if status_code == 200:
-                return ConnectionTestResult(success=True, latency_ms=latency_ms)
-
-            # 非 200：解析错误信息
-            resp_body = result.get("body", {})
-            error_msg = self._extract_error_message(resp_body, status_code)
-            return ConnectionTestResult(
-                success=False,
-                latency_ms=latency_ms,
-                error_message=error_msg,
-            )
-
-        except LlmApiException as e:
-            latency_ms = int((time.monotonic() - start) * 1000)
-            logger.warning(f"Provider connection test failed: {url} -> {e.message}")
-            return ConnectionTestResult(
-                success=False,
-                latency_ms=latency_ms,
-                error_message=e.message,
-            )
-        except Exception as e:
-            latency_ms = int((time.monotonic() - start) * 1000)
-            logger.warning(f"Provider connection test failed: {url} -> {e}")
-            return ConnectionTestResult(
-                success=False,
-                latency_ms=latency_ms,
-                error_message=str(e),
-            )
-
-    @staticmethod
-    def _extract_error_message(body: dict, status_code: int) -> str:
-        """从不同 Provider 的错误响应中提取可读的错误信息"""
-        # OpenAI 格式: {"error": {"message": "..."}}
-        if "error" in body:
-            err = body["error"]
-            if isinstance(err, dict):
-                return f"HTTP {status_code}: {err.get('message', str(err))}"
-            return f"HTTP {status_code}: {err}"
-        # Anthropic 格式: {"type": "error", "error": {"type": "...", "message": "..."}}
-        if body.get("type") == "error":
-            err = body.get("error", {})
-            return f"HTTP {status_code}: {err.get('message', str(err))}"
-        return f"HTTP {status_code}"
+        adapter = provider_adapter_factory.get_adapter(model.provider_type)
+        return await adapter.test_connection(model)
 
 
 class ModelService(IModelService):
