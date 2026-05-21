@@ -1,8 +1,8 @@
-"""全局异常处理器"""
-import logging
+"""全局异常处理器（structlog 输出，自动携带 correlation_id）"""
 import traceback
 from typing import Any
 
+import structlog
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from starlette.responses import JSONResponse
@@ -11,7 +11,7 @@ from app.common.error_code import ErrorCode
 from app.common.exceptions import BizException
 from app.common.response import ApiResponse
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 def register_exception_handlers(app: FastAPI) -> None:
@@ -19,33 +19,45 @@ def register_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(BizException)
     async def biz_exception_handler(request: Request, exc: BizException) -> Any:
-        """捕获业务异常，返回规范化的 ApiResponse.fail()"""
         logger.warning(
-            f"[BizException] path={request.url.path} code={exc.code} message={exc.message}",
-            extra={"cause": str(exc.cause)} if exc.cause else None,
+            "exception.biz",
+            path=request.url.path,
+            error_code=exc.code,
+            error_message=exc.message,
         )
-        return JSONResponse(ApiResponse.fail(code=exc.code, message=exc.message).model_dump())
+        return JSONResponse(
+            ApiResponse.fail(code=exc.code, message=exc.message).model_dump()
+        )
 
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(
         request: Request, exc: RequestValidationError
     ) -> Any:
-        """捕获 FastAPI 参数校验异常，返回规范化的 ApiResponse.fail()"""
         errors = exc.errors()
-        logger.warning(f"[ValidationError] path={request.url.path} errors={errors}")
-        return JSONResponse(ApiResponse.fail(
-            code=ErrorCode.PARAM_ERROR.code,
-            message=ErrorCode.PARAM_ERROR.message,
-        ).model_dump())
+        logger.warning(
+            "exception.validation",
+            path=request.url.path,
+            errors=errors,
+        )
+        return JSONResponse(
+            ApiResponse.fail(
+                code=ErrorCode.PARAM_ERROR.code,
+                message=ErrorCode.PARAM_ERROR.message,
+            ).model_dump()
+        )
 
     @app.exception_handler(Exception)
     async def general_exception_handler(request: Request, exc: Exception) -> Any:
-        """兜底捕获所有未处理异常，返回 ApiResponse.fail()，隐藏堆栈信息"""
         logger.error(
-            f"[InternalError] path={request.url.path} exception={type(exc).__name__}: {exc}\n"
-            + traceback.format_exc(),
+            "exception.unhandled",
+            path=request.url.path,
+            exception_type=type(exc).__name__,
+            exception_message=str(exc),
+            traceback=traceback.format_exc(),
         )
-        return JSONResponse(ApiResponse.fail(
-            code=ErrorCode.INTERNAL_ERROR.code,
-            message=ErrorCode.INTERNAL_ERROR.message,
-        ).model_dump())
+        return JSONResponse(
+            ApiResponse.fail(
+                code=ErrorCode.INTERNAL_ERROR.code,
+                message=ErrorCode.INTERNAL_ERROR.message,
+            ).model_dump()
+        )

@@ -83,6 +83,7 @@ export interface KnowledgeBase {
   id: number
   name: string
   description?: string
+  document_count?: number
   created_at: string
   updated_at: string
 }
@@ -93,6 +94,18 @@ export interface Document {
   name: string
   size: number
   status: string
+  error_message: string
+  chunk_count: number
+  created_at: string
+  updated_at: string
+}
+
+export interface DocumentChunk {
+  id: number
+  document_id: number
+  content: string
+  chunk_index: number
+  vector_id: string
   created_at: string
   updated_at: string
 }
@@ -101,13 +114,58 @@ export interface McpServer {
   id: number
   name: string
   url: string
+  enabled: boolean
   created_at: string
   updated_at: string
+}
+
+export interface McpTool {
+  id: number
+  server_id: number
+  name: string
+  description: string
+  input_schema: string
+}
+
+export interface McpConnectionTestResult {
+  success: boolean
+  tool_count: number
+  tools: McpTool[]
+  error_message: string
+}
+
+export interface McpServerDetail {
+  server: McpServer
+  tools: McpTool[]
+}
+
+export interface McpDebugResult {
+  result: string
+  elapsed_ms: number
+}
+
+export interface WorkflowNode {
+  node_key: string
+  name: string
+  node_type: string
+  config: Record<string, any>
+  position_x: number
+  position_y: number
+}
+
+export interface WorkflowEdge {
+  source_node_key: string
+  target_node_key: string
+  condition: string
 }
 
 export interface Workflow {
   id: number
   name: string
+  description: string
+  status: string
+  nodes: WorkflowNode[]
+  edges: WorkflowEdge[]
   config: any
   created_at: string
   updated_at: string

@@ -30,7 +30,7 @@
 </template>
 
 <script setup lang="ts" generic="T extends Record<string, any>">
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted } from 'vue'
 import type { PageResult, PageParams } from '@/types/api'
 
 export interface HifyTableProps<T> {

@@ -1,0 +1,41 @@
+# ============================================================
+# 阶段 1：前端构建
+# ============================================================
+FROM node:22-alpine AS builder
+
+WORKDIR /app
+
+# 先复制依赖文件（比源码更少变动，最大化缓存命中）
+COPY hify-web/package.json hify-web/package-lock.json* ./
+
+# 安装依赖（ci 比 install 快且可复现，lock 文件不存在时降级用 install）
+RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
+
+# 复制前端源码
+COPY hify-web/ ./
+
+# 构建生产包，产物输出到 dist/
+RUN npm run build
+
+# ============================================================
+# 阶段 2：Nginx 运行时
+# ============================================================
+FROM nginx:alpine
+
+# 删除默认配置和默认首页
+RUN rm -f /etc/nginx/conf.d/default.conf /usr/share/nginx/html/index.html
+
+# 复制前端静态文件
+COPY --from=builder /app/dist/ /usr/share/nginx/html/
+
+# 复制 Nginx 配置
+COPY deploy/nginx.conf /etc/nginx/conf.d/default.conf
+
+# 健康检查：每 30s 测一次本地 /health，超时 5s，重试 3 次
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD wget -qO- http://127.0.0.1:80/health || exit 1
+
+EXPOSE 80
+
+# nginx:alpine 默认已使用 nginx 用户运行，无需额外切换
+CMD ["nginx", "-g", "daemon off;"]

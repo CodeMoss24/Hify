@@ -16,7 +16,7 @@ class OllamaAdapter(ProviderAdapter):
         base_url = provider.base_url.rstrip("/")
         url = f"{base_url}/api/tags"
         headers = {}
-        return await self._do_test_get(url, headers, timeout=10.0)
+        return await self._do_test_get(provider, url, headers, timeout=10.0)
 
     async def stream_chat(
         self,
@@ -24,6 +24,7 @@ class OllamaAdapter(ProviderAdapter):
         model: str,
         messages: list[dict],
         agent_config: dict,
+        tools: list[dict] | None = None,
     ) -> AsyncGenerator[str, None]:
         """Ollama 格式流式对话"""
         base_url = provider.base_url.rstrip("/")
@@ -41,6 +42,8 @@ class OllamaAdapter(ProviderAdapter):
                 "num_predict": agent_config.get("max_tokens", 2048),
             },
         }
+        if tools:
+            body["tools"] = tools
 
         queue: asyncio.Queue[str | None] = asyncio.Queue()
 
@@ -58,7 +61,10 @@ class OllamaAdapter(ProviderAdapter):
 
         async def run_stream():
             try:
-                await llm_client.stream(url, headers, body, on_sse_data, timeout=120.0)
+                await llm_client.stream(
+                    url, headers, body, on_sse_data, timeout=120.0,
+                    provider=provider.provider_type, model=model,
+                )
             finally:
                 await queue.put(None)
 
@@ -76,3 +82,35 @@ class OllamaAdapter(ProviderAdapter):
                 await task
             except asyncio.CancelledError:
                 pass
+
+    async def chat_complete(
+        self,
+        provider: ProviderModel,
+        model: str,
+        messages: list[dict],
+        agent_config: dict,
+        tools: list[dict] | None = None,
+    ) -> dict:
+        """Ollama 格式非流式对话，返回完整响应"""
+        base_url = provider.base_url.rstrip("/")
+        url = f"{base_url}/api/chat"
+        headers = {
+            "content-type": "application/json",
+        }
+        body = {
+            "model": model,
+            "messages": messages,
+            "stream": False,
+            "options": {
+                "temperature": agent_config.get("temperature", 0.7),
+                "num_predict": agent_config.get("max_tokens", 2048),
+            },
+        }
+        if tools:
+            body["tools"] = tools
+
+        result = await llm_client.admin_post(
+            url, headers, body, timeout=30.0,
+            provider=provider.provider_type, model=model,
+        )
+        return result.get("body", result)

@@ -2,7 +2,7 @@
 from app.agent.models import AgentModel, AgentKnowledgeBaseModel, AgentToolModel
 from app.agent.schemas import (
     AgentCreate, AgentUpdate, AgentResponse,
-    KnowledgeBaseItem, ToolItem,
+    KnowledgeBaseItem,
     BindKnowledgeBaseRequest, BindToolRequest,
 )
 from app.agent.interfaces import IAgentService

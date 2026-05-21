@@ -19,6 +19,7 @@ class AgentModel(Base):
         String(500), nullable=False, default="", comment="描述"
     )
     model_id: Mapped[int] = mapped_column(BigInteger, nullable=False, comment="关联模型 id")
+    workflow_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, comment="绑定的工作流 id")
     system_prompt: Mapped[str] = mapped_column(
         Text, nullable=False, default="", comment="系统提示词"
     )

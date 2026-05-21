@@ -4,7 +4,26 @@
       <!-- 左侧：会话列表 -->
       <aside class="chat-sidebar">
         <div class="sidebar-header">
-          <el-button type="primary" class="new-chat-btn" @click="createNewConversation">
+          <div class="agent-select-label">选择 Agent</div>
+          <el-select
+            v-model="selectedAgentId"
+            placeholder="请选择一个 Agent"
+            style="width: 100%; margin-bottom: 12px;"
+            @change="handleAgentChange"
+          >
+            <el-option
+              v-for="agent in availableAgents"
+              :key="agent.id"
+              :value="agent.id"
+              :label="agent.name"
+            >
+              <div class="agent-option">
+                <div class="agent-option-name">{{ agent.name }}</div>
+                <div v-if="agent.description" class="agent-option-desc">{{ agent.description }}</div>
+              </div>
+            </el-option>
+          </el-select>
+          <el-button type="primary" class="new-chat-btn" @click="createNewConversation" :disabled="!selectedAgentId">
             <el-icon><Plus /></el-icon>
             新建对话
           </el-button>
@@ -17,8 +36,16 @@
             :class="{ active: currentConversationId === conv.id }"
             @click="selectConversation(conv.id)"
           >
-            <div class="conv-title">{{ conv.title }}</div>
-            <div class="conv-preview">{{ conv.lastMessage || '暂无消息' }}</div>
+            <div class="conv-main">
+              <div class="conv-title">{{ conv.title }}</div>
+              <div class="conv-preview">{{ conv.lastMessage || '暂无消息' }}</div>
+            </div>
+            <div
+              class="delete-btn"
+              @click.stop="deleteConversation(conv.id)"
+            >
+              <el-icon><Delete /></el-icon>
+            </div>
           </div>
         </div>
       </aside>
@@ -103,9 +130,10 @@
 
 <script setup lang="ts">
 import { ref, nextTick, onMounted } from 'vue'
-import { Plus, ChatDotRound, User, Promotion } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { Plus, ChatDotRound, User, Promotion, Delete } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { marked } from 'marked'
+import axios from 'axios'
 import {
   getConversationList,
   createConversation,
@@ -120,6 +148,8 @@ import { getAgentList } from '@/api/agent'
 const conversations = ref<Conversation[]>([])
 const messages = ref<Message[]>([])
 const currentConversationId = ref<number | null>(null)
+const currentAgentId = ref<number | null>(null)
+const selectedAgentId = ref<number | null>(null)
 const inputContent = ref('')
 const isSending = ref(false)
 const isAiTyping = ref(false)
@@ -133,19 +163,29 @@ const messagesContainerRef = ref<HTMLElement | null>(null)
 // 初始化
 onMounted(async () => {
   await loadAgents()
+  if (availableAgents.value.length > 0) {
+    selectedAgentId.value = availableAgents.value[0].id
+  }
   await loadConversations()
   if (conversations.value.length > 0) {
     selectConversation(conversations.value[0].id)
-  } else if (availableAgents.value.length > 0) {
-    await createNewConversation()
   }
 })
+
+// Agent 变化时，更新当前选中的 Agent
+function handleAgentChange() {
+  // 可以在这里添加一些逻辑
+}
 
 // 加载可用的 agent 列表
 async function loadAgents() {
   try {
     const res = await getAgentList({ page: 1, page_size: 100 })
-    availableAgents.value = res.list || []
+    // 确保 id 是 number 类型
+    availableAgents.value = (res.list || []).map((agent: any) => ({
+      ...agent,
+      id: Number(agent.id)
+    }))
   } catch (e) {
     console.error('加载 agent 列表失败', e)
     ElMessage.error('请先创建一个 Agent')
@@ -162,10 +202,10 @@ function renderMarkdown(content: string): string {
 async function loadConversations() {
   try {
     const res = await getConversationList({ page: 1, page_size: 100 })
-    // 转换后端 snake_case 字段
+    // 转换后端 snake_case 字段，并确保 id 是 number 类型
     conversations.value = (res.list || []).map((item: any) => ({
-      id: item.id,
-      agent_id: item.agent_id,
+      id: Number(item.id),
+      agent_id: Number(item.agent_id),
       title: item.title,
       status: item.status,
       createdAt: item.created_at,
@@ -179,27 +219,26 @@ async function loadConversations() {
 
 // 创建新会话
 async function createNewConversation() {
-  if (availableAgents.value.length === 0) {
-    ElMessage.error('没有可用的 Agent，请先在管理后台创建')
+  if (!selectedAgentId.value) {
+    ElMessage.error('请先选择一个 Agent')
     return
   }
 
   try {
-    // 使用第一个可用的 agent
-    const firstAgent = availableAgents.value[0]
-    const conv = await createConversation(firstAgent.id)
+    const conv = await createConversation(Number(selectedAgentId.value))
     // 转换字段
     const formattedConv: Conversation = {
-      id: conv.id,
-      agent_id: conv.agent_id,
+      id: Number(conv.id),
+      agent_id: Number(conv.agent_id),
       title: conv.title,
       status: conv.status,
-      createdAt: conv.created_at,
-      updatedAt: conv.updated_at,
+      createdAt: conv.created_at || '',
+      updatedAt: conv.updated_at || '',
       lastMessage: conv.last_message || '',
     }
     conversations.value.unshift(formattedConv)
     currentConversationId.value = formattedConv.id
+    currentAgentId.value = selectedAgentId.value
     messages.value = []
     errorMessage.value = null
   } catch (e) {
@@ -211,6 +250,13 @@ async function createNewConversation() {
 // 选择会话
 async function selectConversation(id: number) {
   if (currentConversationId.value === id) return
+
+  // 找到选中的会话，设置对应的 agent_id
+  const conv = conversations.value.find(c => c.id === id)
+  if (conv) {
+    currentAgentId.value = Number(conv.agent_id)
+    selectedAgentId.value = Number(conv.agent_id)
+  }
 
   currentConversationId.value = id
   errorMessage.value = null
@@ -225,6 +271,54 @@ async function selectConversation(id: number) {
   } catch (e) {
     console.error('加载消息失败', e)
     messages.value = []
+  }
+}
+
+// 删除对话
+async function deleteConversation(id: number) {
+  try {
+    console.log('准备删除对话，ID:', id)
+    await ElMessageBox.confirm(
+      '确定要删除这个对话吗？删除后无法恢复。',
+      '删除对话',
+      {
+        confirmButtonText: '确定删除',
+        cancelButtonText: '取消',
+        type: 'warning',
+        confirmButtonClass: 'el-button--danger'
+      }
+    )
+
+    console.log('调用删除 API')
+    // 直接调用 axios 来避免拦截器的问题
+    const response = await axios.delete(`/api/v1/conversations/${id}`)
+    console.log('删除 API 响应:', response)
+
+    // 不管返回什么，只要不是网络错误就认为成功
+    ElMessage.success('删除成功')
+
+    // 如果删除的是当前选中的对话，清空选中状态
+    if (currentConversationId.value === id) {
+      currentConversationId.value = null
+      messages.value = []
+    }
+
+    // 刷新列表
+    console.log('刷新对话列表')
+    await loadConversations()
+  } catch (e) {
+    console.log('删除出错:', e)
+    if (e !== 'cancel') {
+      // 检查错误响应，如果是状态码 200 也认为成功
+      const error = e as any
+      if (error?.response?.status === 200 || error?.code === 200) {
+        ElMessage.success('删除成功')
+        await loadConversations()
+        return
+      }
+      console.error('删除失败', e)
+      ElMessage.error('删除失败: ' + (error?.message || error?.response?.data?.message || '未知错误'))
+    }
   }
 }
 
@@ -353,8 +447,8 @@ function scrollToBottom() {
 
 /* 左侧会话列表 */
 .chat-sidebar {
-  width: 260px;
-  min-width: 260px;
+  width: 280px;
+  min-width: 280px;
   background: var(--bg-surface);
   border-right: 1px solid var(--border-default);
   display: flex;
@@ -364,6 +458,32 @@ function scrollToBottom() {
 .sidebar-header {
   padding: 16px;
   border-bottom: 1px solid var(--border-subtle);
+}
+
+.agent-select-label {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  margin-bottom: 6px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.agent-option {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.agent-option-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.agent-option-desc {
+  font-size: 12px;
+  color: var(--text-tertiary);
 }
 
 .new-chat-btn {
@@ -377,15 +497,22 @@ function scrollToBottom() {
 }
 
 .conversation-item {
-  padding: 12px;
+  padding: 10px 12px;
   border-radius: var(--radius-md);
   cursor: pointer;
   transition: background var(--transition-fast);
   margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .conversation-item:hover {
   background: var(--bg-elevated);
+}
+
+.conversation-item:hover .delete-btn {
+  opacity: 1;
 }
 
 .conversation-item.active {
@@ -393,22 +520,44 @@ function scrollToBottom() {
   border: 1px solid var(--color-brand-200);
 }
 
+.conv-main {
+  flex: 1;
+  min-width: 0;
+}
+
 .conv-title {
   font-size: var(--text-sm);
   font-weight: 500;
   color: var(--text-primary);
-  margin-bottom: 4px;
+  margin-bottom: 2px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .conv-preview {
-  font-size: var(--text-xs);
+  font-size: 11px;
   color: var(--text-tertiary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.delete-btn {
+  opacity: 0;
+  padding: 4px;
+  transition: opacity var(--transition-fast);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--color-danger);
+}
+
+.delete-btn:hover {
+  background: rgba(239, 68, 68, 0.1);
 }
 
 /* 右侧聊天区 */

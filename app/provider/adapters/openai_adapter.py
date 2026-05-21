@@ -31,7 +31,7 @@ class OpenAiAdapter(ProviderAdapter):
             "max_tokens": 1,
             "messages": [{"role": "user", "content": "hi"}],
         }
-        return await self._do_test_post(url, headers, body, timeout=10.0)
+        return await self._do_test_post(provider, url, headers, body, timeout=10.0)
 
     async def stream_chat(
         self,
@@ -39,6 +39,7 @@ class OpenAiAdapter(ProviderAdapter):
         model: str,
         messages: list[dict],
         agent_config: dict,
+        tools: list[dict] | None = None,
     ) -> AsyncGenerator[str, None]:
         """OpenAI 格式流式对话"""
         base_url = provider.base_url.rstrip("/")
@@ -55,6 +56,8 @@ class OpenAiAdapter(ProviderAdapter):
             "temperature": agent_config.get("temperature", 0.7),
             "max_tokens": agent_config.get("max_tokens", 2048),
         }
+        if tools:
+            body["tools"] = tools
 
         queue: asyncio.Queue[str | None] = asyncio.Queue()
 
@@ -75,7 +78,10 @@ class OpenAiAdapter(ProviderAdapter):
 
         async def run_stream():
             try:
-                await llm_client.stream(url, headers, body, on_sse_data, timeout=120.0)
+                await llm_client.stream(
+                    url, headers, body, on_sse_data, timeout=120.0,
+                    provider=provider.provider_type, model=model,
+                )
             finally:
                 await queue.put(None)
 
@@ -93,3 +99,34 @@ class OpenAiAdapter(ProviderAdapter):
                 await task
             except asyncio.CancelledError:
                 pass
+
+    async def chat_complete(
+        self,
+        provider: ProviderModel,
+        model: str,
+        messages: list[dict],
+        agent_config: dict,
+        tools: list[dict] | None = None,
+    ) -> dict:
+        """OpenAI 格式非流式对话，返回完整响应"""
+        base_url = provider.base_url.rstrip("/")
+        url = f"{base_url}/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {provider.api_key}",
+            "content-type": "application/json",
+        }
+        body = {
+            "model": model,
+            "messages": messages,
+            "stream": False,
+            "temperature": agent_config.get("temperature", 0.7),
+            "max_tokens": agent_config.get("max_tokens", 2048),
+        }
+        if tools:
+            body["tools"] = tools
+
+        result = await llm_client.admin_post(
+            url, headers, body, timeout=30.0,
+            provider=provider.provider_type, model=model,
+        )
+        return result.get("body", result)

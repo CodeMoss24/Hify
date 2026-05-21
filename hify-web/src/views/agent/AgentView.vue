@@ -110,6 +110,26 @@
           />
         </el-form-item>
         <el-divider content-position="left">模型参数</el-divider>
+        <el-form-item label="知识库" prop="knowledge_base_id">
+          <el-select v-model="fd.knowledge_base_id" placeholder="暂不绑定" clearable style="width: 100%">
+            <el-option
+              v-for="kb in allKnowledgeBases"
+              :key="kb.id"
+              :label="kb.name"
+              :value="kb.id"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="工作流" prop="workflow_id">
+          <el-select v-model="fd.workflow_id" placeholder="暂不绑定" clearable style="width: 100%">
+            <el-option
+              v-for="wf in allWorkflows"
+              :key="wf.id"
+              :label="wf.name"
+              :value="wf.id"
+            />
+          </el-select>
+        </el-form-item>
         <el-form-item label="温度" prop="temperature">
           <div class="slider-wrapper">
             <el-slider
@@ -150,7 +170,9 @@ import { notifySuccess } from '@/utils/notify'
 import { getAgentList, createAgent, updateAgent, deleteAgent } from '@/api/agent'
 import { getProviderList } from '@/api/provider'
 import { getModelList } from '@/api/model'
-import type { Agent, Model, ModelProvider } from '@/types/model'
+import { getKnowledgeBaseList } from '@/api/knowledge'
+import { getWorkflowList } from '@/api/workflow'
+import type { Agent, Model, ModelProvider, KnowledgeBase, Workflow } from '@/types/model'
 
 // ── 模型列表（表单下拉用，按 Provider 分组）──────────────────
 const allModels = ref<Model[]>([])
@@ -206,6 +228,43 @@ const loadModels = async () => {
 
 onMounted(loadModels)
 
+// ── 知识库列表（表单下拉用）─────────────────────────────────
+const allKnowledgeBases = ref<KnowledgeBase[]>([])
+
+const loadKnowledgeBases = async () => {
+  try {
+    const res = await getKnowledgeBaseList({ page: 1, page_size: 100 })
+    // 确保所有知识库 ID 都是 Number 类型
+    const list = (res.list as KnowledgeBase[]).map(kb => ({
+      ...kb,
+      id: Number(kb.id)
+    }))
+    allKnowledgeBases.value = list
+  } catch {
+    // ignore
+  }
+}
+
+onMounted(loadKnowledgeBases)
+
+// ── 工作流列表（表单下拉用）─────────────────────────────────
+const allWorkflows = ref<Workflow[]>([])
+
+const loadWorkflows = async () => {
+  try {
+    const res = await getWorkflowList({ page: 1, page_size: 100 })
+    const list = (res.list as Workflow[]).map(wf => ({
+      ...wf,
+      id: Number(wf.id)
+    }))
+    allWorkflows.value = list
+  } catch {
+    // ignore
+  }
+}
+
+onMounted(loadWorkflows)
+
 // ── 弹窗 ────────────────────────────────────────────────
 const tableRef = ref()
 const dialogRef = ref()
@@ -223,11 +282,20 @@ const handleAdd = () => {
     max_tokens: 2048,
     max_context_turns: 10,
     enabled: 1,
+    knowledge_base_id: null,
+    workflow_id: null,
   })
 }
 
 const handleEdit = (row: Agent) => {
   editingAgent.value = row
+
+  // 取第一个知识库 ID，确保是 Number 类型
+  let kbId: number | null = null
+  if (row.knowledge_bases?.length && row.knowledge_bases[0]?.id != null) {
+    kbId = Number(row.knowledge_bases[0].id)
+  }
+
   dialogRef.value.open({
     name: row.name,
     description: (row as any).description ?? '',
@@ -237,6 +305,8 @@ const handleEdit = (row: Agent) => {
     max_tokens: (row as any).max_tokens ?? 2048,
     max_context_turns: (row as any).max_context_turns ?? 10,
     enabled: (row as any).enabled ?? 1,
+    knowledge_base_id: kbId,
+    workflow_id: (row as any).workflow_id ?? null,
   })
 }
 
@@ -245,11 +315,13 @@ const handleSubmit = async (formData: any) => {
     name: formData.name,
     description: formData.description ?? '',
     model_id: formData.model_id,
+    workflow_id: formData.workflow_id ?? null,
     system_prompt: formData.system_prompt ?? '',
     temperature: formData.temperature ?? 0.7,
     max_tokens: formData.max_tokens ?? 2048,
     max_context_turns: formData.max_context_turns ?? 10,
     enabled: formData.enabled ?? 1,
+    knowledge_base_id: formData.knowledge_base_id ?? 0,
   }
   if (editingAgent.value) {
     await updateAgent(editingAgent.value.id, payload)

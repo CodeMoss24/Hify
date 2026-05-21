@@ -1,20 +1,35 @@
-"""熔断器与重试处理器"""
+"""熔断器与重试处理器（structlog 结构化事件）"""
 import asyncio
-import logging
 import time
 from enum import Enum
 from typing import Any, Callable
 
+import structlog
+
 from app.infrastructure.llm.llm_api_exception import LlmApiException
 from app.common.error_code import ErrorCode
+from app.common.logging import (
+    EVENT_CIRCUIT_STATE_CHANGE,
+    EVENT_CIRCUIT_REJECTED,
+    EVENT_RETRY,
+    EVENT_RETRY_EXHAUSTED,
+    LOG_KEY_FROM_STATE,
+    LOG_KEY_TO_STATE,
+    LOG_KEY_FAILURE_COUNT,
+    LOG_KEY_PROVIDER,
+    LOG_KEY_ATTEMPT,
+    LOG_KEY_MAX_RETRIES,
+    LOG_KEY_DELAY,
+)
+from app.common.metrics import circuit_breaker_state as cb_gauge
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class CircuitState(Enum):
-    CLOSED = "closed"      # 正常，允许请求通过
-    OPEN = "open"          # 熔断打开，快速失败
-    HALF_OPEN = "half_open"  # 冷却后放行一个探测请求
+    CLOSED = "closed"
+    OPEN = "open"
+    HALF_OPEN = "half_open"
 
 
 class CircuitBreaker:
@@ -33,6 +48,7 @@ class CircuitBreaker:
         self._failure_count = 0
         self._last_failure_time: float | None = None
         self._lock = asyncio.Lock()
+        cb_gauge.labels(provider=provider_key).set(0)
 
     async def can_execute(self) -> bool:
         """检查是否允许执行请求"""
@@ -44,21 +60,37 @@ class CircuitBreaker:
                     return False
                 elapsed = time.monotonic() - self._last_failure_time
                 if elapsed >= self.open_timeout:
-                    logger.info(f"CircuitBreaker [{self.provider_key}] HALF_OPEN")
+                    logger.info(
+                        EVENT_CIRCUIT_STATE_CHANGE,
+                        **{
+                            LOG_KEY_PROVIDER: self.provider_key,
+                            LOG_KEY_FROM_STATE: CircuitState.OPEN.value,
+                            LOG_KEY_TO_STATE: CircuitState.HALF_OPEN.value,
+                        },
+                    )
                     self._state = CircuitState.HALF_OPEN
+                    cb_gauge.labels(provider=self.provider_key).set(2)
                     return True
                 return False
-            # HALF_OPEN：允许执行
             return True
 
     async def record_success(self) -> None:
         """记录成功，关闭熔断器"""
         async with self._lock:
             if self._state == CircuitState.HALF_OPEN:
-                logger.info(f"CircuitBreaker [{self.provider_key}] CLOSED (probe ok)")
+                logger.info(
+                    EVENT_CIRCUIT_STATE_CHANGE,
+                    **{
+                        LOG_KEY_PROVIDER: self.provider_key,
+                        LOG_KEY_FROM_STATE: CircuitState.HALF_OPEN.value,
+                        LOG_KEY_TO_STATE: CircuitState.CLOSED.value,
+                        LOG_KEY_FAILURE_COUNT: self._failure_count,
+                    },
+                )
             self._state = CircuitState.CLOSED
             self._failure_count = 0
             self._last_failure_time = None
+            cb_gauge.labels(provider=self.provider_key).set(0)
 
     async def record_failure(self) -> None:
         """记录失败，触发熔断"""
@@ -67,21 +99,41 @@ class CircuitBreaker:
             self._last_failure_time = time.monotonic()
             if self._state == CircuitState.HALF_OPEN:
                 logger.warning(
-                    f"CircuitBreaker [{self.provider_key}] OPEN (probe failed)"
+                    EVENT_CIRCUIT_STATE_CHANGE,
+                    **{
+                        LOG_KEY_PROVIDER: self.provider_key,
+                        LOG_KEY_FROM_STATE: CircuitState.HALF_OPEN.value,
+                        LOG_KEY_TO_STATE: CircuitState.OPEN.value,
+                        LOG_KEY_FAILURE_COUNT: self._failure_count,
+                    },
                 )
                 self._state = CircuitState.OPEN
+                cb_gauge.labels(provider=self.provider_key).set(1)
             elif self._failure_count >= self.failure_threshold:
                 logger.warning(
-                    f"CircuitBreaker [{self.provider_key}] OPEN "
-                    f"(failures={self._failure_count})"
+                    EVENT_CIRCUIT_STATE_CHANGE,
+                    **{
+                        LOG_KEY_PROVIDER: self.provider_key,
+                        LOG_KEY_FROM_STATE: CircuitState.CLOSED.value,
+                        LOG_KEY_TO_STATE: CircuitState.OPEN.value,
+                        LOG_KEY_FAILURE_COUNT: self._failure_count,
+                    },
                 )
                 self._state = CircuitState.OPEN
+                cb_gauge.labels(provider=self.provider_key).set(1)
+
+    @property
+    def state(self) -> CircuitState:
+        return self._state
+
+    @property
+    def failure_count(self) -> int:
+        return self._failure_count
 
 
 class RetryHandler:
     """指数退避重试处理器"""
 
-    # 退避曲线：1s → 2s → 4s，上限 30s
     RETRY_DELAYS = [1.0, 2.0, 4.0]
     MAX_DELAY = 30.0
 
@@ -89,7 +141,6 @@ class RetryHandler:
         self.max_retries = max_retries
 
     def should_retry(self, exc: LlmApiException) -> bool:
-        """判断异常是否可重试"""
         code = exc.error_code
         return code in (
             ErrorCode.LLM_TIMEOUT,
@@ -98,23 +149,47 @@ class RetryHandler:
         )
 
     def get_retry_delay(self, attempt: int) -> float:
-        """获取第 attempt 次重试的延迟（0-based）"""
         if attempt >= len(self.RETRY_DELAYS):
             return self.MAX_DELAY
         return self.RETRY_DELAYS[attempt]
 
     async def execute_with_retry(
         self,
-        coro,
+        coro_factory,
         is_retryable: Callable[[LlmApiException], bool],
     ) -> Any:
-        """执行协程，失败时退避重试，返回最终结果或抛异常
+        attempt = 0
+        last_exc = None
 
-        Args:
-            coro: 要执行的异步协程对象
-            is_retryable: 判断异常是否可重试的函数
-        """
-        # 注意：因为协程只能 await 一次，重试需要重新创建
-        # 所以这里我们只尝试一次
-        # 实际项目中应该传入协程工厂函数
-        return await coro
+        while True:
+            try:
+                return await coro_factory()
+            except LlmApiException as e:
+                last_exc = e
+                if not is_retryable(e):
+                    logger.warning(
+                        "retry.non_retryable",
+                        error_code=e.error_code.code if e.error_code else None,
+                        error_message=e.message,
+                    )
+                    raise
+                if attempt >= self.max_retries:
+                    logger.warning(
+                        EVENT_RETRY_EXHAUSTED,
+                        **{
+                            LOG_KEY_ATTEMPT: attempt,
+                            LOG_KEY_MAX_RETRIES: self.max_retries,
+                        },
+                    )
+                    raise
+                delay = self.get_retry_delay(attempt)
+                logger.warning(
+                    EVENT_RETRY,
+                    **{
+                        LOG_KEY_ATTEMPT: attempt + 1,
+                        LOG_KEY_MAX_RETRIES: self.max_retries,
+                        LOG_KEY_DELAY: delay,
+                    },
+                )
+                await asyncio.sleep(delay)
+                attempt += 1

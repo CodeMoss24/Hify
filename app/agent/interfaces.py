@@ -55,3 +55,13 @@ class IAgentService(ABC):
     async def unbind_tool(self, db: Session, agent_id: int, tool_id: int) -> bool:
         """解绑 MCP 工具"""
         pass
+
+    @abstractmethod
+    async def get_knowledge_base_ids(self, db: Session, agent_id: int) -> list[int]:
+        """获取 Agent 绑定的知识库 ID 列表"""
+        pass
+
+    @abstractmethod
+    async def bind_tools(self, db: Session, agent_id: int, tool_ids: list[int]) -> AgentResponse:
+        """Agent 批量绑定 MCP 工具（全量替换）"""
+        pass

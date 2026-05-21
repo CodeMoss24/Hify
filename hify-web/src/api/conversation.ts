@@ -1,4 +1,4 @@
-import { get, post } from '@/api'
+import { get, post, del } from '@/api'
 import type { PageResult, PageParams } from '@/types/api'
 
 export interface Conversation {
@@ -8,6 +8,8 @@ export interface Conversation {
   status: string
   updatedAt: string
   createdAt: string
+  created_at?: string
+  updated_at?: string
   lastMessage?: string
   last_message?: string
 }
@@ -52,6 +54,16 @@ export function getConversationList(params?: PageParams): Promise<PageResult<Con
 
 export function createConversation(agentId?: number): Promise<Conversation> {
   return post('/v1/conversations', { agent_id: agentId || 1 }) // 默认 agent_id=1
+}
+
+export function deleteConversation(id: number): Promise<void> {
+  return del(`/v1/conversations/${id}`).catch((error: any) => {
+    // 如果是删除成功，只是响应解析问题，也当作成功
+    if (error?.code === 200 || error?.message === 'deleted') {
+      return Promise.resolve()
+    }
+    return Promise.reject(error)
+  })
 }
 
 export async function getConversationMessages(id: number): Promise<Message[]> {

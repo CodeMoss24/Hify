@@ -1,8 +1,11 @@
 """FastAPI 入口"""
 import asyncio
+import json
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.responses import Response
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 
 from app.common.config import setup_json_encoders
 from app.common.database import Base, _engine
@@ -11,7 +14,7 @@ from app.common.logging_config import setup_logging
 from app.common.redis_client import redis_client
 from app.infrastructure.llm.llm_client import llm_client
 from app.provider.health_checker import health_checker
-from app.common.response import ApiResponse
+from app.common.health import get_health_status
 
 # 导入所有业务模块的 models，确保 SQLAlchemy 能发现全部表
 from app.provider.models import ProviderModel, ModelModel, ProviderHealthLogModel
@@ -20,6 +23,7 @@ from app.chat import models as chat_models
 from app.mcp import models as mcp_models
 from app.workflow import models as workflow_models
 from app.knowledge import models as knowledge_models
+from app.refund import models as refund_models
 
 
 @asynccontextmanager
@@ -57,6 +61,11 @@ register_exception_handlers(app)
 from app.provider.router import router as provider_router
 from app.agent.router import router as agent_router
 from app.chat.router import router as chat_router
+from app.knowledge.router import router as knowledge_router
+from app.workflow.router import router as workflow_router
+from app.mcp.router import router as mcp_router
+from app.refund.router import router as refund_router
+from app.refund.mcp_server import mcp_refund_router
 
 # 注册 provider 路由
 app.include_router(provider_router, prefix="/api/v1", tags=["provider"])
@@ -64,9 +73,30 @@ app.include_router(provider_router, prefix="/api/v1", tags=["provider"])
 app.include_router(agent_router, prefix="/api/v1", tags=["agent"])
 # 注册 chat 路由
 app.include_router(chat_router, prefix="/api/v1", tags=["chat"])
+# 注册 knowledge 路由
+app.include_router(knowledge_router, prefix="/api/v1", tags=["knowledge"])
+# 注册 workflow 路由
+app.include_router(workflow_router, prefix="/api/v1", tags=["workflow"])
+# 注册 mcp 路由
+app.include_router(mcp_router, prefix="/api/v1", tags=["mcp"])
+# 注册 refund 路由
+app.include_router(refund_router, prefix="/api/v1", tags=["refund"])
+# 注册 refund MCP 协议端点
+app.include_router(mcp_refund_router, prefix="/api/v1/mcp-refund", tags=["mcp-refund"])
 
 
 @app.get("/v1/health")
 async def health_check():
-    """健康检查接口"""
-    return ApiResponse.ok(data="Hify is running")
+    """健康检查接口：检查 MySQL / Redis / Qdrant / 熔断器状态"""
+    result, http_status = await get_health_status()
+    return Response(
+        content=json.dumps(result, ensure_ascii=False),
+        media_type="application/json",
+        status_code=http_status,
+    )
+
+
+@app.get("/metrics")
+async def metrics():
+    """Prometheus 指标端点（仅内部 Prometheus 抓取，不经过 Nginx 对外暴露）"""
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)

@@ -1,0 +1,59 @@
+# ============================================================
+# 阶段 1：依赖安装（利用 Docker 层缓存）
+# ============================================================
+FROM python:3.10-slim AS builder
+
+# 设置工作目录
+WORKDIR /app
+
+# 安装构建依赖（gcc 等编译工具，cryptography/bcrypt 需要）
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends gcc libc-dev && \
+    rm -rf /var/lib/apt/lists/*
+
+# 先复制 requirements.txt（比源码更少变动，最大化缓存命中）
+COPY requirements.txt .
+
+# 安装 Python 依赖到 /install 目录，供第二阶段复制
+# --user 安装避免污染系统 Python
+RUN pip install --no-cache-dir --user -r requirements.txt
+
+# ============================================================
+# 阶段 2：运行时镜像（最小化）
+# ============================================================
+FROM python:3.10-slim AS runtime
+
+# 时区设置为 Asia/Shanghai
+ENV TZ=Asia/Shanghai
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+
+# 创建非 root 用户 hify，后续进程以该用户运行
+RUN groupadd -r hify && useradd -r -g hify -d /app -s /sbin/nologin hify
+
+# 设置工作目录
+WORKDIR /app
+
+# 从 builder 阶段复制已安装的依赖（带完整路径，保留 site-packages 结构）
+COPY --from=builder /root/.local /app/.local
+
+# 复制应用源码，设置正确权限
+COPY --chown=hify:hify app/ ./app/
+
+# 创建上传文件目录并声明为 VOLUME（持久化用户文档）
+RUN mkdir -p /app/uploads && chown -R hify:hify /app
+VOLUME ["/app/uploads"]
+
+# 切换到非 root 用户
+USER hify
+
+# 暴露 FastAPI 端口
+EXPOSE 8000
+
+# 健康检查：每 30s 检测一次，超时 5s，最多重试 3 次，启动后 60s 开始检查
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/v1/health')" || exit 1
+
+# 启动 uvicorn
+# --proxy-headers：信任 Nginx 反代传来的 X-Forwarded-* 头
+# --host 0.0.0.0：监听所有网卡，接受来自 Nginx 容器的请求
+CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers"]

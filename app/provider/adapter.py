@@ -28,17 +28,30 @@ class ProviderAdapter(ABC):
         model: str,
         messages: list[dict],
         agent_config: dict,
+        tools: list[dict] | None = None,
     ) -> AsyncGenerator[str, None]:
         """流式对话，yield 纯文本 delta"""
         pass
 
+    @abstractmethod
+    async def chat_complete(
+        self,
+        provider: ProviderModel,
+        model: str,
+        messages: list[dict],
+        agent_config: dict,
+        tools: list[dict] | None = None,
+    ) -> dict:
+        """非流式对话，返回完整响应（含 finish_reason、tool_calls 等）"""
+        pass
+
     async def _do_test_get(
-        self, url: str, headers: dict, timeout: float
+        self, provider: ProviderModel, url: str, headers: dict, timeout: float
     ) -> ConnectionTestResult:
         """通过 LlmClient GET 请求测试连通性"""
         start = time.monotonic()
         try:
-            result = await llm_client.admin_get(url, headers, timeout)
+            result = await llm_client.admin_get(url, headers, timeout, provider=provider.provider_type)
             latency_ms = int((time.monotonic() - start) * 1000)
 
             status_code = result["status_code"]
@@ -74,12 +87,16 @@ class ProviderAdapter(ABC):
             )
 
     async def _do_test_post(
-        self, url: str, headers: dict, body: dict, timeout: float
+        self, provider: ProviderModel, url: str, headers: dict, body: dict, timeout: float
     ) -> ConnectionTestResult:
         """通过 LlmClient POST chat/completions 测试连通性"""
         start = time.monotonic()
         try:
-            result = await llm_client.admin_post(url, headers, body, timeout)
+            test_model = body.get("model", "unknown")
+            result = await llm_client.admin_post(
+                url, headers, body, timeout,
+                provider=provider.provider_type, model=test_model,
+            )
             latency_ms = int((time.monotonic() - start) * 1000)
 
             status_code = result["status_code"]

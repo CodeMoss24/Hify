@@ -10,7 +10,7 @@ from app.provider.interfaces import IProviderService, IModelService
 from app.agent.service import AgentService
 from app.provider.service import ProviderService, ModelService
 from app.knowledge.service import KnowledgeBaseService
-from app.mcp.service import McpToolService
+from app.mcp.service import McpToolService, McpServerService
 from app.chat.interfaces import IChatService
 from app.chat.service import ChatService
 from app.chat.schemas import ConversationCreate, ConversationResponse, ChatRequest, MessageResponse
@@ -20,15 +20,18 @@ router = APIRouter()
 
 def _chat_service() -> IChatService:
     """构造 ChatService 实例及其依赖"""
+    mcp_tool_service = McpToolService()
     agent_service = AgentService(
         model_service=ModelService(),
         knowledge_base_service=KnowledgeBaseService(),
-        mcp_tool_service=McpToolService(),
+        mcp_tool_service=mcp_tool_service,
+        mcp_server_service=McpServerService(),
     )
     return ChatService(
         agent_service=agent_service,
         model_service=ModelService(),
         provider_service=ProviderService(),
+        mcp_tool_service=mcp_tool_service,
     )
 
 

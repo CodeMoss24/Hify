@@ -1,0 +1,101 @@
+{
+    "name": "Condition Test Workflow",
+    "description": "Test condition node",
+    "nodes": [
+        {
+            "node_key": "start",
+            "name": "Start",
+            "node_type": "START",
+            "config": {},
+            "position_x": 0,
+            "position_y": 0
+        },
+        {
+            "node_key": "classify",
+            "name": "Classify",
+            "node_type": "LLM",
+            "config": {
+                "model_config_id": 1,
+                "prompt": "请判断用户的问题属于“售后”还是“售前”，只返回这两个词之一: {{start.userMessage}}",
+                "output_variable": "output"
+            },
+            "position_x": 200,
+            "position_y": 0
+        },
+        {
+            "node_key": "condition",
+            "name": "Router",
+            "node_type": "CONDITION",
+            "config": {
+                "expression": "{{classify.output}}",
+                "output_variable": "result"
+            },
+            "position_x": 400,
+            "position_y": 0
+        },
+        {
+            "node_key": "aftersales",
+            "name": "Aftersales",
+            "node_type": "LLM",
+            "config": {
+                "model_config_id": 1,
+                "prompt": "这是售后问题，告诉用户我们会尽快处理退款/换货: {{start.userMessage}}",
+                "output_variable": "output"
+            },
+            "position_x": 600,
+            "position_y": -100
+        },
+        {
+            "node_key": "presales",
+            "name": "Presales",
+            "node_type": "LLM",
+            "config": {
+                "model_config_id": 1,
+                "prompt": "这是售前问题，详细介绍产品功能: {{start.userMessage}}",
+                "output_variable": "output"
+            },
+            "position_x": 600,
+            "position_y": 100
+        },
+        {
+            "node_key": "end",
+            "name": "End",
+            "node_type": "END",
+            "config": {},
+            "position_x": 800,
+            "position_y": 0
+        }
+    ],
+    "edges": [
+        {
+            "source_node_key": "start",
+            "target_node_key": "classify",
+            "condition": ""
+        },
+        {
+            "source_node_key": "classify",
+            "target_node_key": "condition",
+            "condition": ""
+        },
+        {
+            "source_node_key": "condition",
+            "target_node_key": "aftersales",
+            "condition": "售后"
+        },
+        {
+            "source_node_key": "condition",
+            "target_node_key": "presales",
+            "condition": "售前"
+        },
+        {
+            "source_node_key": "aftersales",
+            "target_node_key": "end",
+            "condition": ""
+        },
+        {
+            "source_node_key": "presales",
+            "target_node_key": "end",
+            "condition": ""
+        }
+    ]
+}

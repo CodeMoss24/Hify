@@ -38,6 +38,13 @@ LLM_CONNECT_TIMEOUT = int(os.getenv("LLM_CONNECT_TIMEOUT", "10"))
 LLM_CHAT_CONCURRENCY = int(os.getenv("LLM_CHAT_CONCURRENCY", "10"))
 BACKGROUND_CONCURRENCY = int(os.getenv("BACKGROUND_CONCURRENCY", "5"))
 
+# 火山引擎 Embedding 配置
+ARK_EMBEDDING_BASE_URL = os.getenv("ARK_EMBEDDING_BASE_URL", "https://ark.cn-beijing.volces.com/api/plan/v3")
+ARK_EMBEDDING_MODEL = os.getenv("ARK_EMBEDDING_MODEL", "doubao-embedding-vision")
+ARK_EMBEDDING_API_KEY = os.getenv("ARK_EMBEDDING_API_KEY", "")
+ARK_EMBEDDING_BATCH_SIZE = int(os.getenv("ARK_EMBEDDING_BATCH_SIZE", "4"))
+ARK_EMBEDDING_DIMENSION = int(os.getenv("ARK_EMBEDDING_DIMENSION", "1024"))
+
 
 def setup_json_encoders(app: FastAPI) -> None:
     """注册时间类型序列化：所有 datetime/date 序列化为 ISO 8601 字符串"""

@@ -11,11 +11,12 @@ from app.agent.schemas import (
     AgentResponse,
     BindKnowledgeBaseRequest,
     BindToolRequest,
+    AgentToolBindRequest,
 )
 from app.agent.service import AgentService
 from app.provider.service import ModelService
 from app.knowledge.service import KnowledgeBaseService
-from app.mcp.service import McpToolService
+from app.mcp.service import McpToolService, McpServerService
 
 router = APIRouter()
 
@@ -26,6 +27,7 @@ def _agent_service() -> IAgentService:
         model_service=ModelService(),
         knowledge_base_service=KnowledgeBaseService(),
         mcp_tool_service=McpToolService(),
+        mcp_server_service=McpServerService(),
     )
 
 
@@ -119,6 +121,18 @@ async def unbind_knowledge_base(
 
 
 # ── MCP 工具绑定端点 ────────────────────────────────────────
+
+
+@router.put("/agents/{agent_id}/tools", response_model=ApiResponse)
+async def bind_tools(
+    agent_id: int = Path(..., ge=1),
+    body: AgentToolBindRequest = ...,
+    db: Session = Depends(get_db),
+) -> ApiResponse:
+    """批量绑定 MCP 工具（全量替换）"""
+    agent_service = _agent_service()
+    agent = await agent_service.bind_tools(db, agent_id, body.tool_ids)
+    return ApiResponse.ok(data=agent)
 
 
 @router.post("/agents/{agent_id}/tools", response_model=ApiResponse)

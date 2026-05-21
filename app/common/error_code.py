@@ -29,6 +29,7 @@ class ErrorCode(Enum):
     MCP_SERVER_NOT_FOUND = (5001, "MCP server not found")
     MCP_TOOL_NOT_FOUND = (5002, "MCP tool not found")
     MCP_CALL_FAILED = (5003, "MCP tool call failed")
+    MCP_SERVER_IN_USE = (5004, "MCP server is in use by agent")
 
     # Workflow (6000-6999)
     WORKFLOW_NOT_FOUND = (6001, "Workflow not found")
@@ -38,6 +39,11 @@ class ErrorCode(Enum):
     KNOWLEDGE_BASE_NOT_FOUND = (7001, "Knowledge base not found")
     DOCUMENT_NOT_FOUND = (7002, "Document not found")
     CHUNK_NOT_FOUND = (7003, "Chunk not found")
+
+    # Refund (9000-9999)
+    REFUND_NOT_FOUND = (9001, "Refund application not found")
+    REFUND_DUPLICATE = (9002, "Duplicate refund application")
+    REFUND_CANCEL_NOT_ALLOWED = (9003, "Refund cannot be cancelled")
 
     # LLM (8000-8999)
     LLM_TIMEOUT = (8001, "LLM API timeout")

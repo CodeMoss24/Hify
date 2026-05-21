@@ -23,19 +23,34 @@ const router = createRouter({
       component: () => import('@/views/agent/AgentView.vue'),
     },
     {
-      path: '/knowledge',
-      name: 'Knowledge',
-      component: () => import('@/views/knowledge/KnowledgeView.vue'),
+      path: '/knowledge-bases',
+      name: 'KnowledgeBases',
+      component: () => import('@/views/knowledge/KnowledgeBaseList.vue'),
+    },
+    {
+      path: '/knowledge-bases/:kbId/documents',
+      name: 'KnowledgeBaseDocuments',
+      component: () => import('@/views/knowledge/DocumentList.vue'),
     },
     {
       path: '/workflows',
       name: 'Workflows',
-      component: () => import('@/views/workflow/WorkflowView.vue'),
+      component: () => import('@/views/workflow/WorkflowList.vue'),
+    },
+    {
+      path: '/workflows/create',
+      name: 'WorkflowCreate',
+      component: () => import('@/views/workflow/WorkflowCreate.vue'),
     },
     {
       path: '/mcp',
       name: 'Mcp',
       component: () => import('@/views/mcp/McpView.vue'),
+    },
+    {
+      path: '/mcp/:id',
+      name: 'McpDetail',
+      component: () => import('@/views/mcp/McpDetailView.vue'),
     },
   ],
 })

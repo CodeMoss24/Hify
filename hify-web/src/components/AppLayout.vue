@@ -84,7 +84,7 @@ const menuItems = [
   { path: '/chat',       label: '对话',       icon: ChatDotRound },
   { path: '/providers',  label: '模型管理',   icon: Setting },
   { path: '/agents',     label: 'Agent 管理',  icon: User },
-  { path: '/knowledge', label: '知识库',     icon: Document },
+  { path: '/knowledge-bases', label: '知识库',     icon: Document },
   { path: '/workflows',  label: '工作流',     icon: Share },
   { path: '/mcp',        label: 'MCP',        icon: Connection },
 ]

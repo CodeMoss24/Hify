@@ -68,6 +68,7 @@ CREATE TABLE `tb_agent` (
   `name` VARCHAR(64) NOT NULL COMMENT 'Agent 名称',
   `description` VARCHAR(500) NOT NULL DEFAULT '' COMMENT '描述',
   `model_id` BIGINT NOT NULL COMMENT '关联模型 id',
+  `workflow_id` BIGINT DEFAULT NULL COMMENT '绑定的工作流 id',
   `system_prompt` TEXT NOT NULL DEFAULT '' COMMENT '系统提示词',
   `temperature` DECIMAL(3,2) NOT NULL DEFAULT 0.70 COMMENT '温度参数 0.00~1.00',
   `max_tokens` INT NOT NULL DEFAULT 2048 COMMENT '最大生成 Token 数',
@@ -77,7 +78,8 @@ CREATE TABLE `tb_agent` (
   `updated_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
   `deleted` TINYINT(1) NOT NULL DEFAULT 0,
   INDEX `idx_tb_agent_deleted` (`deleted`),
-  INDEX `idx_tb_agent_model_id` (`model_id`, `deleted`)
+  INDEX `idx_tb_agent_model_id` (`model_id`, `deleted`),
+  INDEX `idx_tb_agent_workflow_id` (`workflow_id`, `deleted`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Agent 表';
 
 -- =============================================
@@ -143,7 +145,7 @@ CREATE TABLE `tb_mcp_tool` (
   `deleted` TINYINT(1) NOT NULL DEFAULT 0,
   INDEX `idx_tb_mcp_tool_deleted` (`deleted`),
   INDEX `idx_tb_mcp_tool_server_id` (`server_id`, `deleted`),
-  UNIQUE INDEX `idx_tb_mcp_tool_server_name` (`server_id`, `name`, `deleted`)
+  UNIQUE INDEX `idx_tb_mcp_tool_server_name` (`server_id`, `name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='MCP 工具表';
 
 -- =============================================
@@ -171,6 +173,8 @@ CREATE TABLE `tb_document` (
   `name` VARCHAR(128) NOT NULL COMMENT '文档名称',
   `size` BIGINT NOT NULL DEFAULT 0 COMMENT '文件大小字节',
   `status` VARCHAR(32) NOT NULL DEFAULT 'pending' COMMENT '状态: pending/processing/done/failed',
+  `error_message` VARCHAR(512) NOT NULL DEFAULT '' COMMENT '处理失败时的错误信息',
+  `chunk_count` INT NOT NULL DEFAULT 0 COMMENT '分块数量',
   `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   `updated_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
   `deleted` TINYINT(1) NOT NULL DEFAULT 0,
@@ -254,7 +258,8 @@ DROP TABLE IF EXISTS `tb_workflow`;
 CREATE TABLE `tb_workflow` (
   `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   `name` VARCHAR(64) NOT NULL COMMENT '工作流名称',
-  `config` JSON NOT NULL COMMENT '工作流配置 JSON',
+  `description` VARCHAR(256) NOT NULL DEFAULT '' COMMENT '描述',
+  `status` VARCHAR(20) NOT NULL DEFAULT 'DRAFT' COMMENT '状态: DRAFT/ACTIVE',
   `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   `updated_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
   `deleted` TINYINT(1) NOT NULL DEFAULT 0,
@@ -269,8 +274,9 @@ DROP TABLE IF EXISTS `tb_workflow_node`;
 CREATE TABLE `tb_workflow_node` (
   `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   `workflow_id` BIGINT NOT NULL COMMENT '工作流 id',
+  `node_key` VARCHAR(32) NOT NULL COMMENT '节点唯一标识',
   `name` VARCHAR(64) NOT NULL COMMENT '节点名称',
-  `node_type` VARCHAR(32) NOT NULL COMMENT '节点类型: start/end/action/condition',
+  `node_type` VARCHAR(32) NOT NULL COMMENT '节点类型: START/END/LLM/CONDITION/API_CALL',
   `config` JSON NOT NULL COMMENT '节点配置 JSON',
   `position_x` INT NOT NULL DEFAULT 0 COMMENT 'X 坐标',
   `position_y` INT NOT NULL DEFAULT 0 COMMENT 'Y 坐标',
@@ -278,7 +284,8 @@ CREATE TABLE `tb_workflow_node` (
   `updated_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
   `deleted` TINYINT(1) NOT NULL DEFAULT 0,
   INDEX `idx_tb_wf_node_deleted` (`deleted`),
-  INDEX `idx_tb_wf_node_wf_id` (`workflow_id`, `deleted`)
+  INDEX `idx_tb_wf_node_wf_id` (`workflow_id`, `deleted`),
+  UNIQUE INDEX `idx_tb_wf_node_key` (`workflow_id`, `node_key`, `deleted`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='工作流节点表';
 
 -- =============================================
@@ -288,8 +295,8 @@ DROP TABLE IF EXISTS `tb_workflow_edge`;
 CREATE TABLE `tb_workflow_edge` (
   `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   `workflow_id` BIGINT NOT NULL COMMENT '工作流 id',
-  `source_node_id` BIGINT NOT NULL COMMENT '源节点 id',
-  `target_node_id` BIGINT NOT NULL COMMENT '目标节点 id',
+  `source_node_key` VARCHAR(32) NOT NULL COMMENT '源节点 key',
+  `target_node_key` VARCHAR(32) NOT NULL COMMENT '目标节点 key',
   `condition` VARCHAR(256) DEFAULT '' COMMENT '条件表达式',
   `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   `updated_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
@@ -332,5 +339,69 @@ CREATE TABLE `tb_api_key` (
   INDEX `idx_tb_api_key_user_id` (`user_id`, `deleted`),
   UNIQUE INDEX `idx_tb_api_key_key` (`api_key`, `deleted`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='API Key 表';
+
+-- =============================================
+-- 20. tb_workflow_run - 工作流执行记录
+-- =============================================
+DROP TABLE IF EXISTS `tb_workflow_run`;
+CREATE TABLE `tb_workflow_run` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `workflow_id` BIGINT NOT NULL COMMENT '工作流 id',
+  `status` VARCHAR(20) NOT NULL DEFAULT 'PENDING' COMMENT '状态: PENDING/RUNNING/SUCCESS/FAILED',
+  `input` JSON DEFAULT NULL COMMENT '输入数据',
+  `output` JSON DEFAULT NULL COMMENT '输出数据',
+  `error_message` TEXT NOT NULL DEFAULT '' COMMENT '错误信息',
+  `elapsed_ms` INT NOT NULL DEFAULT 0 COMMENT '耗时(毫秒)',
+  `started_at` DATETIME(3) DEFAULT NULL COMMENT '开始时间',
+  `finished_at` DATETIME(3) DEFAULT NULL COMMENT '结束时间',
+  `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `updated_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  `deleted` TINYINT(1) NOT NULL DEFAULT 0,
+  INDEX `idx_tb_wf_run_workflow_id` (`workflow_id`, `deleted`),
+  INDEX `idx_tb_wf_run_status` (`status`, `deleted`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='工作流执行记录表';
+
+-- =============================================
+-- 21. tb_workflow_node_run - 工作流节点执行记录
+-- =============================================
+DROP TABLE IF EXISTS `tb_workflow_node_run`;
+CREATE TABLE `tb_workflow_node_run` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `workflow_run_id` BIGINT NOT NULL COMMENT '工作流执行 id',
+  `node_key` VARCHAR(32) NOT NULL COMMENT '节点 key',
+  `node_type` VARCHAR(32) NOT NULL COMMENT '节点类型',
+  `status` VARCHAR(20) NOT NULL DEFAULT 'PENDING' COMMENT '状态: PENDING/RUNNING/SUCCESS/FAILED',
+  `input_data` JSON DEFAULT NULL COMMENT '输入数据',
+  `output_data` JSON DEFAULT NULL COMMENT '输出数据',
+  `error_message` TEXT NOT NULL DEFAULT '' COMMENT '错误信息',
+  `elapsed_ms` INT NOT NULL DEFAULT 0 COMMENT '耗时(毫秒)',
+  `started_at` DATETIME(3) DEFAULT NULL COMMENT '开始时间',
+  `finished_at` DATETIME(3) DEFAULT NULL COMMENT '结束时间',
+  `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `updated_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  `deleted` TINYINT(1) NOT NULL DEFAULT 0,
+  INDEX `idx_tb_wf_node_run_run_id` (`workflow_run_id`, `deleted`),
+  INDEX `idx_tb_wf_node_run_node_key` (`node_key`, `deleted`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='工作流节点执行记录表';
+
+-- =============================================
+-- 22. tb_refund_application - 退款申请表
+-- =============================================
+DROP TABLE IF EXISTS `tb_refund_application`;
+CREATE TABLE `tb_refund_application` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `order_id` VARCHAR(64) NOT NULL COMMENT '订单号',
+  `user_id` VARCHAR(64) NOT NULL COMMENT '用户ID',
+  `amount` BIGINT NOT NULL COMMENT '退款金额(分)',
+  `reason` VARCHAR(512) NOT NULL DEFAULT '' COMMENT '退款原因',
+  `status` VARCHAR(32) NOT NULL DEFAULT 'PENDING' COMMENT 'PENDING/APPROVED/PROCESSING/COMPLETED/REJECTED',
+  `reject_reason` VARCHAR(512) NOT NULL DEFAULT '' COMMENT '拒绝原因',
+  `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `updated_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  `deleted` TINYINT(1) NOT NULL DEFAULT 0,
+  INDEX `idx_tb_refund_application_deleted` (`deleted`),
+  INDEX `idx_tb_refund_application_order_id` (`order_id`, `deleted`),
+  INDEX `idx_tb_refund_application_status` (`status`, `deleted`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='退款申请表';
 
 SET FOREIGN_KEY_CHECKS = 1;

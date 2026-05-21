@@ -3,10 +3,10 @@
     <!-- 页面顶部 -->
     <div class="page-header">
       <div class="page-header-left">
-        <h1 class="page-title">模型提供商管理</h1>
-        <p class="page-desc">管理 AI 模型提供商配置与连接</p>
+        <h1 class="page-title">模型管理</h1>
+        <p class="page-desc">管理 AI 模型提供商与模型配置</p>
       </div>
-      <el-button type="primary" class="btn-add" @click="handleAdd">
+      <el-button type="primary" class="btn-add" @click="handleAddProvider">
         <el-icon><Plus /></el-icon>
         新增提供商
       </el-button>
@@ -15,8 +15,51 @@
     <!-- 表格 -->
     <div class="table-wrapper">
       <HifyTable ref="tableRef" :api="getProviderList">
-        <el-table-column prop="name" label="名称" min-width="160" />
-        <el-table-column prop="provider_type" label="类型" width="130">
+        <el-table-column type="expand">
+          <template #default="{ row }">
+            <div class="expand-content">
+              <div class="expand-header">
+                <span class="expand-title">模型列表</span>
+                <el-button type="primary" size="small" plain @click="handleAddModel(row)">
+                  <el-icon><Plus /></el-icon>
+                  添加模型
+                </el-button>
+              </div>
+              <el-table
+                v-if="providerModels[row.id]?.length"
+                :data="providerModels[row.id]"
+                size="small"
+                class="model-table"
+              >
+                <el-table-column prop="name" label="名称" width="160" />
+                <el-table-column prop="model_id" label="Model ID" min-width="200" />
+                <el-table-column prop="status" label="状态" width="90">
+                  <template #default="{ row: m }">
+                    <el-tag :type="m.status === 'enabled' ? 'success' : 'info'" size="small" effect="plain">
+                      {{ m.status === 'enabled' ? '启用' : '禁用' }}
+                    </el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="capabilities" label="能力" min-width="140">
+                  <template #default="{ row: m }">
+                    <span class="capabilities-text">{{ m.capabilities || '-' }}</span>
+                  </template>
+                </el-table-column>
+                <el-table-column label="操作" width="140">
+                  <template #default="{ row: m }">
+                    <div class="action-buttons">
+                      <el-button type="primary" text size="small" @click="handleEditModel(row, m)">编辑</el-button>
+                      <el-button type="danger" text size="small" @click="handleDeleteModel(m)">删除</el-button>
+                    </div>
+                  </template>
+                </el-table-column>
+              </el-table>
+              <el-empty v-else description="暂无模型" :image-size="60" />
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column prop="name" label="名称" min-width="140" />
+        <el-table-column prop="provider_type" label="类型" width="110">
           <template #default="{ row }">
             <span class="provider-type">{{ typeLabelMap[row.provider_type] ?? row.provider_type }}</span>
           </template>
@@ -54,7 +97,7 @@
         <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row }">
             <div class="action-buttons">
-              <el-button type="primary" text size="small" class="btn-edit" @click="handleEdit(row)">编辑</el-button>
+              <el-button type="primary" text size="small" class="btn-edit" @click="handleEditProvider(row)">编辑</el-button>
               <el-button
                 text size="small"
                 class="btn-test"
@@ -63,19 +106,19 @@
               >
                 测试
               </el-button>
-              <el-button type="danger" text size="small" class="btn-delete" @click="handleDelete(row)">删除</el-button>
+              <el-button type="danger" text size="small" class="btn-delete" @click="handleDeleteProvider(row)">删除</el-button>
             </div>
           </template>
         </el-table-column>
       </HifyTable>
     </div>
 
-    <!-- 表单弹窗 -->
+    <!-- 提供商表单弹窗 -->
     <HifyFormDialog
-      ref="dialogRef"
+      ref="providerDialogRef"
       title="模型提供商"
-      :rules="formRules"
-      @submit="handleSubmit"
+      :rules="providerFormRules"
+      @submit="handleProviderSubmit"
     >
       <template #default="{ formData: fd }">
         <el-form-item label="名称" prop="name">
@@ -111,11 +154,37 @@
         </el-form-item>
       </template>
     </HifyFormDialog>
+
+    <!-- 模型表单弹窗 -->
+    <HifyFormDialog
+      ref="modelDialogRef"
+      title="模型"
+      :rules="modelFormRules"
+      @submit="handleModelSubmit"
+    >
+      <template #default="{ formData: fd }">
+        <el-form-item label="名称" prop="name">
+          <el-input v-model="fd.name" placeholder="请输入模型显示名称（如 DeepSeek-V3）" />
+        </el-form-item>
+        <el-form-item label="Model ID" prop="model_id">
+          <el-input v-model="fd.model_id" placeholder="请输入模型 ID（如 deepseek-chat）" />
+        </el-form-item>
+        <el-form-item label="状态" prop="status">
+          <el-select v-model="fd.status" style="width: 100%">
+            <el-option label="启用" value="enabled" />
+            <el-option label="禁用" value="disabled" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="能力" prop="capabilities">
+          <el-input v-model="fd.capabilities" placeholder="如 chat,embedding,vision（可选）" />
+        </el-form-item>
+      </template>
+    </HifyFormDialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Plus, View, Hide } from '@element-plus/icons-vue'
 import HifyTable from '@/components/HifyTable.vue'
@@ -129,7 +198,13 @@ import {
   deleteProvider,
   testConnection,
 } from '@/api/provider'
-import type { ModelProvider, ProviderHealth } from '@/types/model'
+import {
+  getModelList,
+  createModel,
+  updateModel,
+  deleteModel,
+} from '@/api/model'
+import type { ModelProvider, Model } from '@/types/model'
 
 // ── 类型映射 ────────────────────────────────────────────
 const typeLabelMap: Record<string, string> = {
@@ -151,35 +226,59 @@ const healthLabel = (status: string) => {
   return '未知'
 }
 
-// ── 弹窗 ────────────────────────────────────────────────
+// ── 模型数据（按 provider_id 分组）─────────────────────────
+const providerModels = ref<Record<number, Model[]>>({})
+
+const loadAllModels = async () => {
+  try {
+    const providersRes = await getProviderList({ page: 1, page_size: 100 })
+    const providers = providersRes.list as ModelProvider[]
+    const map: Record<number, Model[]> = {}
+    for (const p of providers) {
+      try {
+        const res = await getModelList(p.id, { page: 1, page_size: 100 })
+        map[p.id] = res.list as Model[]
+      } catch {
+        map[p.id] = []
+      }
+    }
+    providerModels.value = map
+  } catch {
+    // ignore
+  }
+}
+
+onMounted(loadAllModels)
+
+// ── 提供商弹窗 ──────────────────────────────────────────
 const tableRef = ref()
-const dialogRef = ref()
+const providerDialogRef = ref()
+const modelDialogRef = ref()
 const showApiKey = ref(false)
 const editingProvider = ref<ModelProvider | null>(null)
 
-const formRules = {
+const providerFormRules = {
   name:          [{ required: true, message: '请输入提供商名称', trigger: 'blur' }],
   provider_type: [{ required: true, message: '请选择类型', trigger: 'change' }],
   base_url:      [{ required: true, message: '请输入 Base URL', trigger: 'blur' }],
 }
 
-const handleAdd = () => {
+const handleAddProvider = () => {
   editingProvider.value = null
   showApiKey.value = false
-  dialogRef.value.open()
+  providerDialogRef.value.open()
 }
 
-const handleEdit = (row: ModelProvider) => {
+const handleEditProvider = (row: ModelProvider) => {
   editingProvider.value = row
   showApiKey.value = false
   const form = { ...row, test_model: row.extra_config?.test_model ?? '' }
-  dialogRef.value.open(form)
+  providerDialogRef.value.open(form)
 }
 
-const handleSubmit = async (formData: any) => {
+const handleProviderSubmit = async (formData: any) => {
   const { test_model, ...rest } = formData
   const payload: any = { ...rest }
-  // openai_compatible 时把 test_model 放进 extra_config
   if (rest.provider_type === 'openai_compatible' && test_model) {
     payload.extra_config = { ...(rest.extra_config || {}), test_model }
   }
@@ -191,15 +290,17 @@ const handleSubmit = async (formData: any) => {
     notifySuccess('创建成功')
   }
   tableRef.value?.refresh()
+  await loadAllModels()
 }
 
-// ── 删除 ────────────────────────────────────────────────
-const handleDelete = (row: ModelProvider) => {
+// ── 删除提供商 ──────────────────────────────────────────
+const handleDeleteProvider = (row: ModelProvider) => {
   const deleteFn = useConfirm(
     `确认删除「${row.name}」？删除后无法恢复。`,
     async () => {
       await deleteProvider(row.id)
       tableRef.value?.refresh()
+      await loadAllModels()
     },
     '删除成功',
   )
@@ -223,6 +324,71 @@ const handleTestConnection = async (row: ModelProvider) => {
   } finally {
     testingId.value = null
   }
+}
+
+// ── 模型 CRUD ──────────────────────────────────────────
+const editingModel = ref<Model | null>(null)
+const currentProvider = ref<ModelProvider | null>(null)
+
+const modelFormRules = {
+  name:     [{ required: true, message: '请输入模型名称', trigger: 'blur' }],
+  model_id: [{ required: true, message: '请输入 Model ID', trigger: 'blur' }],
+}
+
+const handleAddModel = (provider: ModelProvider) => {
+  editingModel.value = null
+  currentProvider.value = provider
+  modelDialogRef.value.open({
+    status: 'enabled',
+    capabilities: '',
+  })
+}
+
+const handleEditModel = (provider: ModelProvider, model: Model) => {
+  editingModel.value = model
+  currentProvider.value = provider
+  modelDialogRef.value.open({
+    name: model.name,
+    model_id: model.model_id,
+    status: model.status,
+    capabilities: model.capabilities || '',
+  })
+}
+
+const handleModelSubmit = async (formData: any) => {
+  if (!currentProvider.value) return
+  if (editingModel.value) {
+    await updateModel(editingModel.value.id, {
+      name: formData.name,
+      model_id: formData.model_id,
+      status: formData.status,
+      capabilities: formData.capabilities || '',
+    })
+    notifySuccess('模型更新成功')
+  } else {
+    await createModel({
+      provider_id: currentProvider.value.id,
+      name: formData.name,
+      model_id: formData.model_id,
+      status: formData.status,
+      capabilities: formData.capabilities || '',
+    })
+    notifySuccess('模型创建成功')
+  }
+  await loadAllModels()
+}
+
+const handleDeleteModel = (model: Model) => {
+  const deleteFn = useConfirm(
+    `确认删除模型「${model.name}」？删除后无法恢复。`,
+    async () => {
+      await deleteModel(model.id)
+      notifySuccess('模型删除成功')
+      await loadAllModels()
+    },
+    '删除成功',
+  )
+  deleteFn()
 }
 </script>
 
@@ -293,12 +459,10 @@ const handleTestConnection = async (row: ModelProvider) => {
   box-shadow: var(--shadow-sm);
 }
 
-/* 表格行高 52px */
 .table-wrapper :deep(.el-table__row) {
   height: 52px;
 }
 
-/* 表头背景 */
 .table-wrapper :deep(.el-table__header th) {
   background: var(--bg-elevated) !important;
   color: var(--text-secondary);
@@ -306,12 +470,10 @@ const handleTestConnection = async (row: ModelProvider) => {
   font-size: var(--text-sm);
 }
 
-/* 行 hover 微微变色 */
 .table-wrapper :deep(.el-table__body tr:hover > td) {
   background: var(--bg-elevated) !important;
 }
 
-/* 响应式隐藏 Base URL 和创建时间列 */
 .table-wrapper :deep(.col-base-url),
 .table-wrapper :deep(.col-created-at) {
   display: var(--hide-extra-col, table-cell);
@@ -323,7 +485,38 @@ const handleTestConnection = async (row: ModelProvider) => {
   }
 }
 
-/* 操作列按钮 */
+/* ── 展开行 ──────────────────────────────────────────── */
+.expand-content {
+  padding: 8px 0 12px 40px;
+}
+
+.expand-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.expand-title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.model-table {
+  margin-bottom: 4px;
+}
+
+.model-table :deep(.el-table__row) {
+  height: 44px !important;
+}
+
+.capabilities-text {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+/* ── 操作列按钮 ──────────────────────────────────────── */
 .action-buttons {
   display: flex;
   align-items: center;
@@ -356,26 +549,24 @@ const handleTestConnection = async (row: ModelProvider) => {
   color: #c53030 !important;
 }
 
-/* password 显示切换按钮 */
 .btn-eye {
   padding: 0 4px;
   color: var(--text-tertiary);
 }
 
-/* 分页器上方分割线 */
+/* ── 分页器上方分割线 ────────────────────────────────── */
 .table-wrapper :deep(.hify-table-pagination) {
   padding-top: 16px;
   margin-top: 16px;
   border-top: 1px solid var(--border-default);
 }
 
-/* provider type 文字 */
+/* ── 文字样式 ────────────────────────────────────────── */
 .provider-type {
   font-weight: 500;
   color: var(--text-primary);
 }
 
-/* Base URL monospace 字体 */
 .base-url-text {
   font-family: var(--font-mono);
   font-size: var(--text-xs);
