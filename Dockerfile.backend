@@ -18,7 +18,7 @@ COPY requirements.txt .
 
 # 安装 Python 依赖到 /install 目录，供第二阶段复制
 # --user 安装避免污染系统 Python
-RUN pip install --no-cache-dir --user -r requirements.txt
+RUN pip install --no-cache-dir --user -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
 
 # ============================================================
 # 阶段 2：运行时镜像（最小化）
