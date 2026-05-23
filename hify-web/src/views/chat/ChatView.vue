@@ -116,7 +116,7 @@
               resize="none"
             />
             <div class="input-actions">
-              <el-button type="primary" :loading="isSending" :disabled="!inputContent.trim()" @click="sendMessage">
+              <el-button type="primary" :loading="isSending" :disabled="!inputContent.trim() || !currentConversationId" @click="sendMessage">
                 <el-icon><Promotion /></el-icon>
                 发送
               </el-button>
@@ -297,15 +297,21 @@ async function deleteConversation(id: number) {
     // 不管返回什么，只要不是网络错误就认为成功
     ElMessage.success('删除成功')
 
-    // 如果删除的是当前选中的对话，清空选中状态
-    if (currentConversationId.value === id) {
-      currentConversationId.value = null
-      messages.value = []
-    }
+    const wasSelected = currentConversationId.value === id
 
     // 刷新列表
     console.log('刷新对话列表')
     await loadConversations()
+
+    // 如果删的是当前对话，自动选第一个（或清空）
+    if (wasSelected) {
+      if (conversations.value.length > 0) {
+        selectConversation(conversations.value[0].id)
+      } else {
+        currentConversationId.value = null
+        messages.value = []
+      }
+    }
   } catch (e) {
     console.log('删除出错:', e)
     if (e !== 'cancel') {
@@ -325,7 +331,11 @@ async function deleteConversation(id: number) {
 // 发送消息
 async function sendMessage() {
   const content = inputContent.value.trim()
-  if (!content || !currentConversationId.value || isSending.value) return
+  if (!content || isSending.value) return
+  if (!currentConversationId.value) {
+    ElMessage.warning('请先选择或创建一个对话')
+    return
+  }
 
   // 1. 清空输入框，禁用发送按钮
   inputContent.value = ''
