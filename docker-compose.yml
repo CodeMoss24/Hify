@@ -85,7 +85,7 @@ services:
       # 开发模式：挂载源码目录，uvicorn --reload 自动检测变更
       - ./app:/app/app
     env_file:
-      - .env.docker
+      - .env
     # 开发模式：uvicorn --reload 监听源码变更自动重启
     command: ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--reload"]
     healthcheck:
