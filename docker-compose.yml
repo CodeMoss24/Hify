@@ -121,44 +121,6 @@ services:
     networks:
       - hify-net
 
-  # ==========================================================
-  # 监控服务
-  # ==========================================================
-
-  prometheus:
-    image: prom/prometheus
-    container_name: hify-prometheus
-    command:
-      - "--config.file=/etc/prometheus/prometheus.yml"
-      - "--storage.tsdb.path=/prometheus"
-      - "--web.console.libraries=/etc/prometheus/console_libraries"
-      - "--web.console.templates=/etc/prometheus/consoles"
-      - "--web.enable-lifecycle"
-    volumes:
-      - ./deploy/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - prometheus_data:/prometheus
-    ports:
-      - "9090:9090"
-    restart: unless-stopped
-    networks:
-      - hify-net
-
-  grafana:
-    image: grafana/grafana
-    container_name: hify-grafana
-    environment:
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-hify123}
-      GF_USERS_ALLOW_SIGN_UP: "false"
-    volumes:
-      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./deploy/grafana/dashboards:/etc/grafana/dashboards:ro
-      - grafana_data:/var/lib/grafana
-    ports:
-      - "3000:3000"
-    restart: unless-stopped
-    networks:
-      - hify-net
-
 # ============================================================
 # 网络
 # ============================================================
@@ -166,10 +128,3 @@ networks:
   hify-net:
     driver: bridge
     name: hify-net
-
-# ============================================================
-# 数据卷
-# ============================================================
-volumes:
-  prometheus_data:
-  grafana_data:
