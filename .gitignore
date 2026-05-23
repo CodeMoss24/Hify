@@ -19,3 +19,10 @@ venv/
 
 # 文档数据
 .docs-data/
+
+# Python 缓存
+__pycache__/
+*.pyc
+
+# 用户上传文件
+uploads/

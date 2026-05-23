@@ -664,6 +664,48 @@ assert len(result) > 0                   # 不够精确
 6. **禁止在 setUp/teardown 中隐藏核心测试逻辑**——每个测试方法 Given 段内自包含。如果 fixture 复用率很高，用 conftest.py 的 `@pytest.fixture`。
 7. **禁止对有副作用的异步生成器不做 cleanup**——`async generator` 没跑完要显式 `await gen.aclose()`。
 
+### 前端单元测试规范
+
+#### 技术栈
+
+- **测试框架**：Vitest（原生 Vite 集成，与项目构建工具一致）
+- **组件挂载**：@vue/test-utils
+- **DOM 环境**：jsdom
+- **配置文件**：`vitest.config.ts`（项目根目录）
+
+#### 工作流模块测试要求
+
+**WorkflowForm.vue 必须覆盖的场景：**
+
+| 场景 | 断言要点 |
+|------|----------|
+| 初始渲染 | 默认包含 START 和 END 节点，创建模式标题正确 |
+| 编辑模式 | workflowId prop 传入时，回填名称/描述/节点/连线 |
+| 添加 LLM 节点 | 节点列表增加 LLM 节点，显示模型下拉和提示词输入 |
+| 添加 CONDITION 节点 | 节点列表增加 CONDITION 节点，显示表达式输入 |
+| 删除节点 | 非 START/END 节点可删除，START/END 不可删除 |
+| LLM 校验 | model_config_id 为空 → 报错；prompt 为空 → 报错 |
+| CONDITION 校验 | expression 为空 → 报错 |
+| 全部校验通过 | 返回 null（无错误） |
+| 连线生成 | rebuildEdges 根据节点顺序生成正确的边 |
+| 创建提交 | handleSubmit 调用 createWorkflow，参数包含 name/nodes/edges |
+| 编辑提交 | handleSubmit 调用 updateWorkflow(id, data) |
+| 节点类型变更 | onNodeTypeChange 清空旧配置 |
+
+**Mock 策略：**
+- `vue-router`：mock `useRouter` 和 `useRoute`
+- API 层（`@/api/workflow`, `@/api/provider`, `@/api/model`）：mock 返回值
+- 通知工具（`@/utils/notify`）：mock 成功/错误提示
+- Element Plus 组件：真实渲染（全局注册），不 mock
+
+#### 目录结构
+
+```
+src/__tests__/
+└── workflow/
+    └── WorkflowForm.spec.ts
+```
+
 ---
 
 ## 可观测性与日志规范

@@ -203,9 +203,28 @@ class ChatService(IChatService):
                         db.commit()
                         db.refresh(conv_model)
 
+                # 执行工作流前先做 RAG 检索
+                kb_ids = await self._agent_service.get_knowledge_base_ids(db, agent_id)
+                rag_chunks = None
+                if kb_ids:
+                    chunks = []
+                    chunk_service = DocumentChunkService()
+                    for kb_id in kb_ids:
+                        try:
+                            results = await chunk_service.search_chunks(db, kb_id, content, top_k=3)
+                            logger.info(f"Workflow RAG: kb {kb_id} 检索到 {len(results)} 个 chunks")
+                            chunks.extend(results)
+                        except Exception as e:
+                            logger.warning(f"Workflow RAG search failed for kb_id={kb_id}: {e}")
+                    if chunks:
+                        rag_chunks = chunks
+                        logger.info(f"Workflow RAG: 共 {len(rag_chunks)} 个 chunks 将传入工作流")
+
                 # 执行工作流
                 start_time = time.monotonic()
-                workflow_result = await workflow_engine.execute(agent.workflow_id, content, db)
+                workflow_result = await workflow_engine.execute(
+                    agent.workflow_id, content, db, rag_chunks=rag_chunks,
+                )
                 full_response = workflow_result["result"]
                 latency_ms = int((time.monotonic() - start_time) * 1000)
 

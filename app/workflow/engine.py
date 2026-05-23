@@ -28,13 +28,17 @@ class WorkflowEngine:
         self._model_service: IModelService = ModelService()
         self._provider_service: IProviderService = ProviderService()
 
-    async def execute(self, workflow_id: int, user_message: str, db: Session) -> Dict[str, Any]:
+    async def execute(
+        self, workflow_id: int, user_message: str, db: Session,
+        rag_chunks: list[dict] | None = None,
+    ) -> Dict[str, Any]:
         """执行工作流（async 方法）
 
         Args:
             workflow_id: 工作流 ID
             user_message: 用户消息
             db: 数据库 Session
+            rag_chunks: RAG 检索结果列表，每条含 content 字段
 
         Returns:
             执行结果字典
@@ -71,6 +75,11 @@ class WorkflowEngine:
 
         # 3. 创建执行上下文
         ctx = ExecutionContext(user_message)
+        if rag_chunks:
+            ref_lines = "\n".join(
+                f"[{i+1}] {c['content']}" for i, c in enumerate(rag_chunks)
+            )
+            ctx.set("start", "ragContext", ref_lines)
         last_llm_output = ""
 
         # 4. 找到 START 节点
@@ -208,8 +217,25 @@ class WorkflowEngine:
 
         adapter = provider_adapter_factory.get_adapter(provider.provider_type)
 
-        # 调用 LLM
-        messages = [{"role": "user", "content": resolved_prompt}]
+        # 构建 messages：RAG 上下文 → 用户消息 → 工作流 prompt
+        messages = []
+
+        rag_context = ctx.get("start.ragContext", "")
+        if rag_context:
+            messages.append({
+                "role": "system",
+                "content": (
+                    "请基于以下参考资料回答用户问题。\n"
+                    "如果资料中没有相关信息，直接说\"我没有找到相关资料\"，不要编造。\n\n"
+                    f"【参考资料】\n{rag_context}"
+                ),
+            })
+
+        user_message = ctx.get("start.userMessage", "")
+        if user_message and user_message not in resolved_prompt:
+            messages.append({"role": "user", "content": user_message})
+
+        messages.append({"role": "user", "content": resolved_prompt})
 
         full_response = ""
         async for delta in adapter.stream_chat(

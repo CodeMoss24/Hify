@@ -4,7 +4,7 @@
     <div class="page-header">
       <div class="page-header-left">
         <h1 class="page-title">工作流管理</h1>
-        <p class="page-desc">通过 JSON 配置创建自动化工作流，支持线性执行与条件分支</p>
+        <p class="page-desc">通过表单配置创建自动化工作流，支持线性执行与条件分支</p>
       </div>
       <el-button type="primary" class="btn-add" @click="router.push('/workflows/create')">
         <el-icon><Plus /></el-icon>
@@ -28,8 +28,11 @@
           </template>
         </el-table-column>
         <el-table-column prop="created_at" label="创建时间" width="170" />
-        <el-table-column label="操作" width="120" fixed="right">
+        <el-table-column label="操作" width="180" fixed="right">
           <template #default="{ row }">
+            <el-button type="primary" link size="small" @click="router.push(`/workflows/${row.id}/edit`)">
+              编辑
+            </el-button>
             <el-button type="danger" text size="small" class="btn-delete" @click="handleDelete(row)">删除</el-button>
           </template>
         </el-table-column>
