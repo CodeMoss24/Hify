@@ -220,16 +220,17 @@ class ChatService(IChatService):
                         rag_chunks = chunks
                         logger.info(f"Workflow RAG: 共 {len(rag_chunks)} 个 chunks 将传入工作流")
 
-                # 执行工作流
+                # 执行工作流（流式），每个 LLM 节点输出进度标记 + 流式内容
                 start_time = time.monotonic()
-                workflow_result = await workflow_engine.execute(
+                full_response = ""
+                async for event in workflow_engine.execute_stream(
                     agent.workflow_id, content, db, rag_chunks=rag_chunks,
-                )
-                full_response = workflow_result["result"]
-                latency_ms = int((time.monotonic() - start_time) * 1000)
+                ):
+                    if event["type"] == "delta":
+                        full_response += event["content"]
+                        yield f"data: {json.dumps({'type': 'delta', 'content': event['content']}, ensure_ascii=False)}\n\n"
 
-                # 推送 delta 事件（一次性推送全部内容，因为工作流已经执行完毕）
-                yield f"data: {json.dumps({'type': 'delta', 'content': full_response}, ensure_ascii=False)}\n\n"
+                latency_ms = int((time.monotonic() - start_time) * 1000)
 
                 # 发送 done 事件
                 yield f"data: {json.dumps({'type': 'done', 'finishReason': 'stop', 'latencyMs': latency_ms, 'conversationId': conversation_id}, ensure_ascii=False)}\n\n"
