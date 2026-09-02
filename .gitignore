@@ -25,3 +25,7 @@ __pycache__/
 
 # 用户上传文件
 uploads/
+
+# 运行时生成文件
+logs/
+uploads/
